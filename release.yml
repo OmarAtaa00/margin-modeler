@@ -1,0 +1,63 @@
+name: Build desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin --bundles dmg"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin --bundles dmg"
+          - platform: windows-latest
+            args: "--bundles nsis"
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust builds
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build installers and create the GitHub release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Margin Modeler ${{ github.ref_name }}
+          releaseBody: |
+            Download the installer that matches your computer:
+            - Windows: the file ending in setup.exe
+            - Apple Silicon Mac: the DMG containing aarch64
+            - Intel Mac: the DMG containing x86_64
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
