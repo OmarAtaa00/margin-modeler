@@ -652,6 +652,12 @@ export const initializeProjectPersistence =
     return persistencePromise;
   };
 
+export const flushProjectPersistence =
+  async (): Promise<void> => {
+    await initializeProjectPersistence();
+    await saveQueue;
+  };
+
 const computeScenarioTotals = (resourcesList: Resource[]) => {
   let totalHours = 0;
   let totalCost = 0;
@@ -2092,6 +2098,10 @@ export default function App() {
                   activeScenario.resources.map(r => {
                     const workingDays = calculateWorkingDays(r.startDate, r.endDate);
                     const calculatedTotalHrs = workingDays * 8 * (r.utilization / 100);
+                    const resourceTotalCost =
+                      calculatedTotalHrs * (r.costRate || 0);
+                    const resourceTotalBillable =
+                      calculatedTotalHrs * (r.billRate || 0);
 
                     return (
                       <div key={r.id} className="hover-elevate" style={{
@@ -2202,6 +2212,66 @@ export default function App() {
                               colors={colors}
                               align="right"
                             />
+                          </div>
+
+                          <div style={{
+                            gridColumn: windowWidth >= 720 ? 'span 2' : 'auto',
+                            display: 'grid',
+                            gridTemplateColumns: isMobile
+                              ? '1fr'
+                              : 'repeat(2, minmax(0, 1fr))',
+                            gap: '12px',
+                            minWidth: 0
+                          }}>
+                            {[
+                              {
+                                label: 'Total Cost',
+                                value: resourceTotalCost
+                              },
+                              {
+                                label: 'Total Billable',
+                                value: resourceTotalBillable
+                              }
+                            ].map((total) => (
+                              <div
+                                key={total.label}
+                                style={{
+                                  minHeight: '58px',
+                                  padding: '10px 12px',
+                                  borderRadius: '8px',
+                                  border: `1px solid ${colors.border}`,
+                                  backgroundColor: isDark
+                                    ? 'rgba(99, 102, 241, 0.06)'
+                                    : '#f8fafc',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  boxSizing: 'border-box'
+                                }}
+                              >
+                                <span style={{
+                                  fontSize: '9px',
+                                  fontWeight: 800,
+                                  color: colors.textMuted,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.07em'
+                                }}>
+                                  {total.label}
+                                </span>
+                                <span style={{
+                                  fontSize: '14px',
+                                  fontWeight: 800,
+                                  color: colors.text,
+                                  overflowWrap: 'anywhere'
+                                }}>
+                                  ${total.value.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  })}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </div>
 
