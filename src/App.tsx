@@ -1033,7 +1033,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: `${popoverLayout.left}px`,
-            zIndex: 1000,
+            zIndex: 10000,
             width: `${popoverLayout.width}px`,
             maxWidth: 'calc(100vw - 24px)',
             backgroundColor: colors.card,
@@ -1677,9 +1677,13 @@ export default function App() {
           to { transform: translateY(0); opacity: 1; }
         }
         .hover-elevate {
+          position: relative;
+          z-index: 0;
           transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
-        .hover-elevate:hover {
+        .hover-elevate:hover,
+        .hover-elevate:focus-within {
+          z-index: 50;
           transform: translateY(-2px);
           box-shadow: 0 6px 20px rgba(0,0,0,0.06);
         }
