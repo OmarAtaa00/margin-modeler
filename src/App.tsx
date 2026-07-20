@@ -1,5 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { create } from 'zustand';
+import { load } from '@tauri-apps/plugin-store';
+import {
+  addDays,
+  addWeeks,
+  calculateWorkingDays,
+  compareDateOnly,
+  dateOnlyToUtcMs,
+  differenceInCalendarDays,
+  formatDateOnlyUtc,
+  getMonday,
+  parseDateOnlyUtc
+} from './utils/dates';
+import {
+  clampAllocation,
+  getResourceCapacityHours,
+  getResourceDirectHours,
+  synchronizeResourceFromAllocation,
+  synchronizeResourceFromHours
+} from './utils/resourceCalculations';
 
 // Strongly typed definitions representing realistic calendar plans
 export type Resource = {
@@ -9,7 +28,8 @@ export type Resource = {
   billRate: number;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
-  utilization: number; // Whole number 0-100%
+  utilization: number; // Decimal percentage from 0-100%
+  directHours?: number; // Exact planned hours; derived for older saved workspaces
 };
 
 export type Scenario = {
@@ -33,8 +53,24 @@ type ProjectState = {
   updateResourceField: (resId: string, field: keyof Resource, value: any) => void;
   updateResourceAllocation: (resId: string, value: number) => void;
   updateResourceTotalHoursDirect: (resId: string, hours: number) => void;
+  updateResourceDates: (resId: string, startDate: string, endDate: string) => void;
   setEntireState: (scenarios: Scenario[], activeScenarioId: string) => void;
 };
+
+const roundForDisplay = (value: number, fractionDigits = 2): number => {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** fractionDigits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+
+const formatEditableNumber = (value: number, fractionDigits = 2): string =>
+  String(roundForDisplay(value, fractionDigits));
+
+const formatDisplayNumber = (value: number, fractionDigits = 2): string =>
+  roundForDisplay(value, fractionDigits).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: fractionDigits
+  });
 
 // Default initial date set to the Monday of current context (July 13, 2026)
 const DEFAULT_PROJECT_START = "2026-07-13";
@@ -71,66 +107,65 @@ const defaultResources: Resource[] = [
 ];
 
 const LOCAL_STORAGE_KEY = 'margin_modeler_local_workspace';
+const NATIVE_STORE_FILE = 'margin-modeler-store.json';
+const NATIVE_BACKUP_STORE_FILE =
+  'margin-modeler-store.backup.json';
 
-// Helper to get Monday of a specific date's week
-const getMonday = (dateStr: string): string => {
+const NATIVE_WORKSPACE_KEY = 'workspace';
+
+type PersistedWorkspace = {
+  activeScenarioId: string;
+  scenarios: Scenario[];
+};
+
+const normalizeWorkspace = (
+  value: unknown
+): PersistedWorkspace | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<PersistedWorkspace>;
+
+  if (
+    !Array.isArray(candidate.scenarios) ||
+    typeof candidate.activeScenarioId !== 'string'
+  ) {
+    return null;
+  }
+
+  const activeScenarioId = candidate.scenarios.some(
+    (scenario) => scenario?.id === candidate.activeScenarioId
+  )
+    ? candidate.activeScenarioId
+    : candidate.scenarios[0]?.id ?? '';
+
+  return {
+    scenarios: candidate.scenarios,
+    activeScenarioId
+  };
+};
+const cloneWorkspace = (
+  workspace: PersistedWorkspace
+): PersistedWorkspace => {
+  return JSON.parse(
+    JSON.stringify(workspace)
+  ) as PersistedWorkspace;
+};
+
+const saveLocalStorageBackup = (
+  workspace: PersistedWorkspace
+): void => {
   try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return DEFAULT_PROJECT_START;
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    const monday = new Date(d.setDate(diff));
-    return monday.toISOString().split('T')[0];
-  } catch (e) {
-    return DEFAULT_PROJECT_START;
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify(workspace)
+    );
+  } catch (error) {
+    console.error('Local storage backup failed:', error);
   }
 };
 
-// Add days to a date helper
-const addDays = (dateStr: string, days: number): string => {
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return DEFAULT_PROJECT_START;
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
-  } catch (e) {
-    return DEFAULT_PROJECT_START;
-  }
-};
-
-// Add weeks to a date helper
-const addWeeks = (dateStr: string, weeks: number): string => {
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return DEFAULT_PROJECT_START;
-    d.setDate(d.getDate() + weeks * 7);
-    return d.toISOString().split('T')[0];
-  } catch (e) {
-    return DEFAULT_PROJECT_START;
-  }
-};
-
-// Calculate exact working days (Monday to Friday) between two dates
-const calculateWorkingDays = (startDateStr: string, endDateStr: string): number => {
-  try {
-    const start = new Date(startDateStr);
-    const end = new Date(endDateStr);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
-
-    let count = 0;
-    const curDate = new Date(start.getTime());
-    while (curDate <= end) {
-      const dayOfWeek = curDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sundays (0) and Saturdays (6)
-        count++;
-      }
-      curDate.setDate(curDate.getDate() + 1);
-    }
-    return count;
-  } catch (e) {
-    return 0;
-  }
-};
 
 const getInitialState = () => {
   try {
@@ -238,27 +273,27 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   updateProjectStartDate: (date) => set((state) => {
     try {
-      const parsed = new Date(date);
-      if (isNaN(parsed.getTime())) return {}; 
+      if (!parseDateOnlyUtc(date)) return {};
 
-      const adjustedDate = getMonday(date);
+      const adjustedDate = getMonday(date, DEFAULT_PROJECT_START);
       return {
         scenarios: state.scenarios.map(s => {
           if (s.id !== state.activeScenarioId) return s;
-          
-          const oldStart = new Date(s.projectStartDate).getTime();
-          const newStart = new Date(adjustedDate).getTime();
-          const differenceMs = newStart - oldStart;
+
+          const differenceDays = differenceInCalendarDays(
+            adjustedDate,
+            s.projectStartDate
+          );
+          if (differenceDays === null) return s;
 
           const updatedResources = s.resources.map(r => {
-            const rStart = new Date(r.startDate).getTime();
-            const rEnd = new Date(r.endDate).getTime();
-            
-            return {
+            const currentDirectHours = getResourceDirectHours(r);
+            const shiftedResource = {
               ...r,
-              startDate: new Date(rStart + differenceMs).toISOString().split('T')[0],
-              endDate: new Date(rEnd + differenceMs).toISOString().split('T')[0]
+              startDate: addDays(r.startDate, differenceDays, r.startDate),
+              endDate: addDays(r.endDate, differenceDays, r.endDate)
             };
+            return synchronizeResourceFromHours(shiftedResource, currentDirectHours);
           });
 
           return {
@@ -283,7 +318,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
         costRate: 45,
         billRate: 150,
         startDate: s.projectStartDate,
-        endDate: addWeeks(s.projectStartDate, 12),
+        endDate: addWeeks(s.projectStartDate, 12, DEFAULT_PROJECT_START),
         utilization: 100
       };
       return { ...s, resources: [...s.resources, newRes] };
@@ -317,14 +352,17 @@ export const useProjectStore = create<ProjectState>((set) => ({
           const updated = { ...r, [field]: validatedValue };
 
           if (field === 'startDate' || field === 'endDate') {
+            const currentDirectHours = getResourceDirectHours(r);
             try {
-              const startVal = new Date(updated.startDate).getTime();
-              const endVal = new Date(updated.endDate).getTime();
-              
-              if (isNaN(startVal) || isNaN(endVal)) {
+              const dateComparison = compareDateOnly(
+                updated.startDate,
+                updated.endDate
+              );
+
+              if (dateComparison === null) {
                 updated.startDate = r.startDate;
                 updated.endDate = r.endDate;
-              } else if (startVal > endVal) {
+              } else if (dateComparison > 0) {
                 if (field === 'startDate') updated.endDate = updated.startDate;
                 else updated.startDate = updated.endDate;
               }
@@ -332,6 +370,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
               updated.startDate = r.startDate;
               updated.endDate = r.endDate;
             }
+            return synchronizeResourceFromHours(updated, currentDirectHours);
           }
           return updated;
         })
@@ -344,11 +383,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
-        resources: s.resources.map(r => {
-          if (r.id !== resId) return r;
-          const clampedVal = Math.min(100, Math.max(0, Math.round(Number(value)) || 0));
-          return { ...r, utilization: clampedVal };
-        })
+        resources: s.resources.map(r =>
+          r.id === resId ? synchronizeResourceFromAllocation(r, value) : r
+        )
       };
     })
   })),
@@ -358,17 +395,28 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
+        resources: s.resources.map(r =>
+          r.id === resId ? synchronizeResourceFromHours(r, hours) : r
+        )
+      };
+    })
+  })),
+
+  updateResourceDates: (resId, startDate, endDate) => set((state) => ({
+    scenarios: state.scenarios.map(s => {
+      if (s.id !== state.activeScenarioId) return s;
+      return {
+        ...s,
         resources: s.resources.map(r => {
           if (r.id !== resId) return r;
-          const targetHours = Math.max(0, Number(hours) || 0);
-          const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-          const maxPossibleHours = workingDays * 8;
+          const dateComparison = compareDateOnly(startDate, endDate);
+          if (dateComparison === null || dateComparison > 0) return r;
 
-          if (maxPossibleHours > 0) {
-            const calculatedAlloc = Math.round(Math.min(100, Math.max(0, (targetHours / maxPossibleHours) * 100)));
-            return { ...r, utilization: calculatedAlloc };
-          }
-          return r;
+          const currentDirectHours = getResourceDirectHours(r);
+          return synchronizeResourceFromHours(
+            { ...r, startDate, endDate },
+            currentDirectHours
+          );
         })
       };
     })
@@ -377,17 +425,271 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setEntireState: (scenarios, activeScenarioId) => set({ scenarios, activeScenarioId })
 }));
 
-// Setup auto-save listener on local memory
-useProjectStore.subscribe((state) => {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-      scenarios: state.scenarios,
-      activeScenarioId: state.activeScenarioId
-    }));
-  } catch (e) {
-    console.error("Local storage persistent save failed:", e);
-  }
-});
+// // Setup auto-save listener on local memory
+// useProjectStore.subscribe((state) => {
+//   try {
+//     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+//       scenarios: state.scenarios,
+//       activeScenarioId: state.activeScenarioId
+//     }));
+//   } catch (e) {
+//     console.error("Local storage persistent save failed:", e);
+//   }
+// });
+// let persistencePromise: Promise<void> | null = null;
+// let stopPersistence: (() => void) | null = null;
+
+// export const initializeProjectPersistence =
+//   (): Promise<void> => {
+//     if (persistencePromise) {
+//       return persistencePromise;
+//     }
+
+//     persistencePromise = (async () => {
+//       const currentState = useProjectStore.getState();
+
+//       let workspace: PersistedWorkspace = {
+//         scenarios: currentState.scenarios,
+//         activeScenarioId: currentState.activeScenarioId
+//       };
+
+//       try {
+//         const store = await load(NATIVE_STORE_FILE, {
+//           autoSave: 200,
+//           defaults: {}
+//         });
+
+//         const savedWorkspace = normalizeWorkspace(
+//           await store.get<unknown>(NATIVE_WORKSPACE_KEY)
+//         );
+
+//         if (savedWorkspace) {
+//           // Native data exists, so it becomes the main data source.
+//           workspace = savedWorkspace;
+
+//           useProjectStore.getState().setEntireState(
+//             savedWorkspace.scenarios,
+//             savedWorkspace.activeScenarioId
+//           );
+//         } else {
+//           // No native data yet. Migrate the current localStorage
+//           // data or defaults into the native store.
+//           await store.set(
+//             NATIVE_WORKSPACE_KEY,
+//             workspace
+//           );
+
+//           await store.save();
+//         }
+
+//         // Keep localStorage temporarily as a recovery copy.
+//         saveLocalStorageBackup(workspace);
+
+//         stopPersistence?.();
+
+//         stopPersistence = useProjectStore.subscribe(
+//           (state) => {
+//             const nextWorkspace: PersistedWorkspace = {
+//               scenarios: state.scenarios,
+//               activeScenarioId: state.activeScenarioId
+//             };
+
+//             saveLocalStorageBackup(nextWorkspace);
+
+//             void store
+//               .set(
+//                 NATIVE_WORKSPACE_KEY,
+//                 nextWorkspace
+//               )
+//               .catch((error) => {
+//                 console.error(
+//                   'Native workspace save failed:',
+//                   error
+//                 );
+//               });
+//           }
+//         );
+//       } catch (error) {
+//         console.error(
+//           'Native store could not be initialized. Falling back to localStorage:',
+//           error
+//         );
+
+//         // This keeps browser-only development working even when
+//         // the application is not running inside Tauri.
+//         stopPersistence?.();
+
+//         stopPersistence = useProjectStore.subscribe(
+//           (state) => {
+//             saveLocalStorageBackup({
+//               scenarios: state.scenarios,
+//               activeScenarioId: state.activeScenarioId
+//             });
+//           }
+//         );
+//       }
+//     })();
+
+//     return persistencePromise;
+//   };
+let persistencePromise: Promise<void> | null = null;
+let stopPersistence: (() => void) | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+
+export const initializeProjectPersistence =
+  (): Promise<void> => {
+    if (persistencePromise) {
+      return persistencePromise;
+    }
+
+    persistencePromise = (async () => {
+      const currentState = useProjectStore.getState();
+
+      let workspace: PersistedWorkspace = {
+        scenarios: currentState.scenarios,
+        activeScenarioId: currentState.activeScenarioId
+      };
+
+      try {
+        const [store, backupStore] = await Promise.all([
+          load(NATIVE_STORE_FILE, {
+            autoSave: false,
+            defaults: {}
+          }),
+
+          load(NATIVE_BACKUP_STORE_FILE, {
+            autoSave: false,
+            defaults: {}
+          })
+        ]);
+
+        const savedWorkspace = normalizeWorkspace(
+          await store.get<unknown>(
+            NATIVE_WORKSPACE_KEY
+          )
+        );
+
+        const backupWorkspace = normalizeWorkspace(
+          await backupStore.get<unknown>(
+            NATIVE_WORKSPACE_KEY
+          )
+        );
+
+        if (savedWorkspace) {
+          // The primary native store is valid.
+          workspace = savedWorkspace;
+        } else if (backupWorkspace) {
+          // The primary store is missing or invalid.
+          // Recover automatically from the backup.
+          workspace = backupWorkspace;
+
+          console.warn(
+            'Primary workspace was unavailable. ' +
+            'The backup workspace was restored.'
+          );
+        }
+
+        useProjectStore.getState().setEntireState(
+          workspace.scenarios,
+          workspace.activeScenarioId
+        );
+
+        // Ensure the primary store contains valid data.
+        await store.set(
+          NATIVE_WORKSPACE_KEY,
+          cloneWorkspace(workspace)
+        );
+
+        await store.save();
+
+        // Create the initial backup only when one
+        // does not already exist.
+        if (!backupWorkspace) {
+          await backupStore.set(
+            NATIVE_WORKSPACE_KEY,
+            cloneWorkspace(workspace)
+          );
+
+          await backupStore.save();
+        }
+
+        // Keep localStorage temporarily as another
+        // migration/recovery copy.
+        saveLocalStorageBackup(workspace);
+
+        let lastSavedWorkspace =
+          cloneWorkspace(workspace);
+
+        stopPersistence?.();
+
+        stopPersistence = useProjectStore.subscribe(
+          (state) => {
+            const nextWorkspace = cloneWorkspace({
+              scenarios: state.scenarios,
+              activeScenarioId: state.activeScenarioId
+            });
+
+            saveLocalStorageBackup(nextWorkspace);
+
+            /*
+             * Queue saves so that rapid edits cannot write
+             * the files out of order.
+             *
+             * First:
+             *   previous valid state -> backup
+             *
+             * Then:
+             *   newest state -> primary
+             */
+            saveQueue = saveQueue
+              .then(async () => {
+                await backupStore.set(
+                  NATIVE_WORKSPACE_KEY,
+                  lastSavedWorkspace
+                );
+
+                await backupStore.save();
+
+                await store.set(
+                  NATIVE_WORKSPACE_KEY,
+                  nextWorkspace
+                );
+
+                await store.save();
+
+                lastSavedWorkspace =
+                  cloneWorkspace(nextWorkspace);
+              })
+              .catch((error) => {
+                console.error(
+                  'Native workspace save failed:',
+                  error
+                );
+              });
+          }
+        );
+      } catch (error) {
+        console.error(
+          'Native stores could not be initialized. ' +
+          'Falling back to localStorage:',
+          error
+        );
+
+        stopPersistence?.();
+
+        stopPersistence = useProjectStore.subscribe(
+          (state) => {
+            saveLocalStorageBackup({
+              scenarios: state.scenarios,
+              activeScenarioId: state.activeScenarioId
+            });
+          }
+        );
+      }
+    })();
+
+    return persistencePromise;
+  };
 
 const computeScenarioTotals = (resourcesList: Resource[]) => {
   let totalHours = 0;
@@ -400,9 +702,7 @@ const computeScenarioTotals = (resourcesList: Resource[]) => {
 
   resourcesList.forEach(r => {
     try {
-      const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-      const standardHours = workingDays * 8;
-      const effectiveHours = standardHours * ((r.utilization || 0) / 100);
+      const effectiveHours = getResourceDirectHours(r);
 
       totalHours += effectiveHours;
       totalCost += effectiveHours * (r.costRate || 0);
@@ -486,8 +786,8 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     setIsOpen((open) => !open);
   };
 
-  const dateObj = new Date(value);
-  const validDateObj = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+  const dateObj = parseDateOnlyUtc(value);
+  const validDateObj = dateObj ?? new Date();
 
   const [viewYear, setViewYear] = useState(validDateObj.getUTCFullYear());
   const [viewMonth, setViewMonth] = useState(validDateObj.getUTCMonth());
@@ -503,10 +803,10 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   }, []);
 
   useEffect(() => {
-    const d = new Date(value);
-    if (!isNaN(d.getTime())) {
-      setViewYear(d.getUTCFullYear());
-      setViewMonth(d.getUTCMonth());
+    const date = parseDateOnlyUtc(value);
+    if (date) {
+      setViewYear(date.getUTCFullYear());
+      setViewMonth(date.getUTCMonth());
     }
   }, [value]);
 
@@ -779,14 +1079,77 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   );
 };
 
+interface ResourceAllocationInputProps {
+  value: number;
+  onCommit: (allocation: number) => void;
+  colors: any;
+}
+
+const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({ value, onCommit, colors }) => {
+  const formattedValue = formatEditableNumber(value);
+  const [draft, setDraft] = useState(formattedValue);
+
+  useEffect(() => {
+    setDraft(formattedValue);
+  }, [formattedValue]);
+
+  const commit = () => {
+    const parsed = Number(draft);
+    if (Number.isFinite(parsed)) {
+      onCommit(clampAllocation(parsed));
+    } else {
+      setDraft(formattedValue);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min="0"
+      max="100"
+      step="0.01"
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setDraft(formattedValue);
+          e.currentTarget.blur();
+        }
+      }}
+      className="compact-number-input"
+      style={{
+        width: '64px',
+        height: '38px',
+        padding: '0 7px',
+        margin: 0,
+        textAlign: 'center',
+        fontSize: '12px',
+        fontWeight: 700,
+        lineHeight: 1,
+        borderRadius: '9px',
+        border: `1px solid ${colors.border}`,
+        backgroundColor: colors.inputBg,
+        color: colors.text,
+        outline: 'none',
+        boxShadow: 'none'
+      }}
+      aria-label="Allocation percentage input"
+    />
+  );
+};
+
 interface ResourceHoursInputProps {
   value: number;
   onCommit: (hours: number) => void;
   colors: any;
+  max: number;
 }
 
-const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors }) => {
-  const formattedValue = Math.round(value).toString();
+const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max }) => {
+  const formattedValue = formatEditableNumber(value);
   const [draft, setDraft] = useState(formattedValue);
 
   useEffect(() => {
@@ -806,7 +1169,9 @@ const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit
     <input
       type="number"
       min="0"
-      inputMode="numeric"
+      max={max}
+      step="0.01"
+      inputMode="decimal"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -1016,22 +1381,31 @@ export default function App() {
       let newEnd = dragState.initialEnd;
 
       if (dragState.type === 'shift') {
-        newStart = addDays(dragState.initialStart, deltaDays);
-        newEnd = addDays(dragState.initialEnd, deltaDays);
+        newStart = addDays(dragState.initialStart, deltaDays, dragState.initialStart);
+        newEnd = addDays(dragState.initialEnd, deltaDays, dragState.initialEnd);
       } else if (dragState.type === 'resize-start') {
-        const proposedStart = addDays(dragState.initialStart, deltaDays);
-        if (new Date(proposedStart) <= new Date(newEnd)) {
+        const proposedStart = addDays(
+          dragState.initialStart,
+          deltaDays,
+          dragState.initialStart
+        );
+        const comparison = compareDateOnly(proposedStart, newEnd);
+        if (comparison !== null && comparison <= 0) {
           newStart = proposedStart;
         }
       } else if (dragState.type === 'resize-end') {
-        const proposedEnd = addDays(dragState.initialEnd, deltaDays);
-        if (new Date(proposedEnd) >= new Date(newStart)) {
+        const proposedEnd = addDays(
+          dragState.initialEnd,
+          deltaDays,
+          dragState.initialEnd
+        );
+        const comparison = compareDateOnly(proposedEnd, newStart);
+        if (comparison !== null && comparison >= 0) {
           newEnd = proposedEnd;
         }
       }
 
-      state.updateResourceField(dragState.resId, 'startDate', newStart);
-      state.updateResourceField(dragState.resId, 'endDate', newEnd);
+      state.updateResourceDates(dragState.resId, newStart, newEnd);
     };
 
     const handleMouseUp = () => {
@@ -1054,15 +1428,20 @@ export default function App() {
   const isMobile = windowWidth < 640;
 
   const generateWeeksArray = (baseDateStr: string) => {
-    const weeks = [];
-    const base = new Date(baseDateStr);
-    const validBase = isNaN(base.getTime()) ? new Date(DEFAULT_PROJECT_START) : base;
+    const weeks: Array<{ label: string; fullDate: string }> = [];
+    const validBase = parseDateOnlyUtc(baseDateStr) ??
+      parseDateOnlyUtc(DEFAULT_PROJECT_START);
+    if (!validBase) return weeks;
 
     for (let i = 0; i < 12; i++) {
       const nextWeek = new Date(validBase.getTime());
-      nextWeek.setDate(validBase.getDate() + i * 7);
-      const label = nextWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-      weeks.push({ label, fullDate: nextWeek });
+      nextWeek.setUTCDate(validBase.getUTCDate() + i * 7);
+      const label = nextWeek.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC'
+      });
+      weeks.push({ label, fullDate: formatDateOnlyUtc(nextWeek) });
     }
     return weeks;
   };
@@ -1754,7 +2133,7 @@ export default function App() {
               gap: '16px'
             }}>
               {[
-                { label: 'Effective Work Hours', value: `${activeTotals.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs` },
+                { label: 'Effective Work Hours', value: `${formatDisplayNumber(activeTotals.totalHours)} hrs` },
                 { label: 'Calculated Cost', value: `$${activeTotals.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
                 { label: 'Expected Revenue', value: `$${activeTotals.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
               ].map((stat, i) => (
@@ -1813,7 +2192,8 @@ export default function App() {
                 ) : (
                   activeScenario.resources.map(r => {
                     const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-                    const calculatedTotalHrs = workingDays * 8 * (r.utilization / 100);
+                    const calculatedTotalHrs = getResourceDirectHours(r);
+                    const capacityHours = getResourceCapacityHours(r);
 
                     return (
                       <div key={r.id} className="hover-elevate" style={{
@@ -1940,10 +2320,10 @@ export default function App() {
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <span style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Allocation Rate</span>
                                 <span style={{ fontSize: '10px', fontWeight: 700, color: colors.accent, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#e0e7ff', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {workingDays} weekdays
+                                  {workingDays} weekdays · {formatDisplayNumber(capacityHours, 0)} available hrs
                                 </span>
                               </div>
-                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{calculatedTotalHrs.toFixed(0)} hrs</span>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{formatDisplayNumber(calculatedTotalHrs)} hrs</span>
                             </div>
                             
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1951,8 +2331,8 @@ export default function App() {
                                 type="range"
                                 min="0"
                                 max="100"
-                                step="5"
-                                value={r.utilization}
+                                step="0.01"
+                                value={roundForDisplay(r.utilization)}
                                 onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
                                 style={{
                                   flex: 1,
@@ -1960,29 +2340,10 @@ export default function App() {
                                 }}
                               />
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
+                                <ResourceAllocationInput
                                   value={r.utilization}
-                                  onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
-                                  className="compact-number-input"
-                                  style={{
-                                    width: '58px',
-                                    height: '38px',
-                                    padding: '0 7px',
-                                    margin: 0,
-                                    textAlign: 'center',
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    lineHeight: 1,
-                                    borderRadius: '9px',
-                                    border: `1px solid ${colors.border}`,
-                                    backgroundColor: colors.inputBg,
-                                    color: colors.text,
-                                    outline: 'none',
-                                    boxShadow: 'none'
-                                  }}
+                                  onCommit={(allocation) => state.updateResourceAllocation(r.id, allocation)}
+                                  colors={colors}
                                 />
                                 <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 700 }}>%</span>
                               </div>
@@ -2017,6 +2378,7 @@ export default function App() {
                                 value={calculatedTotalHrs}
                                 onCommit={(hours) => state.updateResourceTotalHoursDirect(r.id, hours)}
                                 colors={colors}
+                                max={capacityHours}
                               />
                             </div>
 
@@ -2122,14 +2484,24 @@ export default function App() {
                       </div>
                     ) : (
                       activeScenario.resources.map(r => {
-                        const projStartMs = new Date(activeScenario.projectStartDate).getTime();
+                        const projStartMs = dateOnlyToUtcMs(
+                          activeScenario.projectStartDate
+                        );
+                        const rStartMs = dateOnlyToUtcMs(r.startDate);
+                        const rEndMs = dateOnlyToUtcMs(r.endDate);
                         const totalDurationMs = 12 * 7 * 24 * 60 * 60 * 1000;
 
-                        const rStartMs = new Date(r.startDate).getTime();
-                        const rEndMs = new Date(r.endDate).getTime() + 24 * 60 * 60 * 1000;
+                        if (
+                          projStartMs === null ||
+                          rStartMs === null ||
+                          rEndMs === null
+                        ) {
+                          return null;
+                        }
 
+                        const inclusiveEndMs = rEndMs + 24 * 60 * 60 * 1000;
                         const startPct = Math.max(0, ((rStartMs - projStartMs) / totalDurationMs) * 100);
-                        const endPct = Math.min(100, ((rEndMs - projStartMs) / totalDurationMs) * 100);
+                        const endPct = Math.min(100, ((inclusiveEndMs - projStartMs) / totalDurationMs) * 100);
                         const widthPct = Math.max(2, endPct - startPct);
 
                         const isVisible = startPct < 100 && endPct > 0;
@@ -2206,7 +2578,7 @@ export default function App() {
                                   textAlign: 'center',
                                   pointerEvents: 'none'
                                 }}>
-                                  {r.name || 'Consultant'} ({r.utilization}%)
+                                  {r.name || 'Consultant'} ({formatDisplayNumber(r.utilization)}%)
                                 </span>
 
                                 {/* Right resize handle */}
