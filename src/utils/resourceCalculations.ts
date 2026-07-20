@@ -9,6 +9,9 @@ export type ResourceHoursModel = {
 
 export const HOURS_PER_WORKDAY = 8;
 
+const roundToTwoDecimals = (value: number): number =>
+  Math.round((value + Number.EPSILON) * 100) / 100;
+
 export const clampAllocation = (value: number): number => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return 0;
@@ -37,10 +40,10 @@ export const synchronizeResourceFromHours = <T extends ResourceHoursModel>(
   const capacityHours = getResourceCapacityHours(resource);
   const numericHours = Number(requestedHours);
   const directHours = Number.isFinite(numericHours)
-    ? Math.min(capacityHours, Math.max(0, numericHours))
+    ? Math.min(capacityHours, Math.max(0, roundToTwoDecimals(numericHours)))
     : 0;
   const utilization = capacityHours > 0
-    ? (directHours / capacityHours) * 100
+    ? roundToTwoDecimals((directHours / capacityHours) * 100)
     : 0;
 
   return { ...resource, directHours, utilization };
@@ -50,7 +53,9 @@ export const synchronizeResourceFromAllocation = <T extends ResourceHoursModel>(
   resource: T,
   requestedAllocation: number
 ): T => {
-  const utilization = clampAllocation(requestedAllocation);
-  const directHours = getResourceCapacityHours(resource) * (utilization / 100);
+  const utilization = roundToTwoDecimals(clampAllocation(requestedAllocation));
+  const directHours = roundToTwoDecimals(
+    getResourceCapacityHours(resource) * (utilization / 100)
+  );
   return { ...resource, utilization, directHours };
 };

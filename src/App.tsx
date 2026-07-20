@@ -12,24 +12,21 @@ import {
   getMonday,
   parseDateOnlyUtc
 } from './utils/dates';
+import {
+  clampAllocation,
+  getResourceCapacityHours,
+  getResourceDirectHours,
+  synchronizeResourceFromAllocation,
+  synchronizeResourceFromHours
+} from './utils/resourceCalculations';
+import { validateWorkspace } from './validation/workspaceValidation';
+import type {
+  PersistedWorkspace,
+  Resource,
+  Scenario
+} from './validation/workspaceValidation';
 
-// Strongly typed definitions representing realistic calendar plans
-export type Resource = {
-  id: string;
-  name: string;
-  costRate: number;
-  billRate: number;
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
-  utilization: number; // Whole number 0-100%
-};
-
-export type Scenario = {
-  id: string;
-  name: string;
-  projectStartDate: string; // Base timeline starting point (YYYY-MM-DD)
-  resources: Resource[];
-};
+export type { Resource, Scenario } from './validation/workspaceValidation';
 
 type ProjectState = {
   activeScenarioId: string;
@@ -45,8 +42,24 @@ type ProjectState = {
   updateResourceField: (resId: string, field: keyof Resource, value: any) => void;
   updateResourceAllocation: (resId: string, value: number) => void;
   updateResourceTotalHoursDirect: (resId: string, hours: number) => void;
+  updateResourceDates: (resId: string, startDate: string, endDate: string) => void;
   setEntireState: (scenarios: Scenario[], activeScenarioId: string) => void;
 };
+
+const roundForDisplay = (value: number, fractionDigits = 2): number => {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** fractionDigits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+
+const formatEditableNumber = (value: number, fractionDigits = 2): string =>
+  String(roundForDisplay(value, fractionDigits));
+
+const formatDisplayNumber = (value: number, fractionDigits = 2): string =>
+  roundForDisplay(value, fractionDigits).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: fractionDigits
+  });
 
 // Default initial date set to the Monday of current context (July 13, 2026)
 const DEFAULT_PROJECT_START = "2026-07-13";
@@ -89,37 +102,11 @@ const NATIVE_BACKUP_STORE_FILE =
 
 const NATIVE_WORKSPACE_KEY = 'workspace';
 
-type PersistedWorkspace = {
-  activeScenarioId: string;
-  scenarios: Scenario[];
-};
-
 const normalizeWorkspace = (
   value: unknown
 ): PersistedWorkspace | null => {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const candidate = value as Partial<PersistedWorkspace>;
-
-  if (
-    !Array.isArray(candidate.scenarios) ||
-    typeof candidate.activeScenarioId !== 'string'
-  ) {
-    return null;
-  }
-
-  const activeScenarioId = candidate.scenarios.some(
-    (scenario) => scenario?.id === candidate.activeScenarioId
-  )
-    ? candidate.activeScenarioId
-    : candidate.scenarios[0]?.id ?? '';
-
-  return {
-    scenarios: candidate.scenarios,
-    activeScenarioId
-  };
+  const result = validateWorkspace(value);
+  return result.ok ? result.workspace : null;
 };
 const cloneWorkspace = (
   workspace: PersistedWorkspace
@@ -147,13 +134,14 @@ const getInitialState = () => {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && Array.isArray(parsed.scenarios) && typeof parsed.activeScenarioId === 'string') {
-        const activeScenarioId = parsed.scenarios.some((scenario: Scenario) => scenario.id === parsed.activeScenarioId)
-          ? parsed.activeScenarioId
-          : (parsed.scenarios[0]?.id || '');
-        return { scenarios: parsed.scenarios, activeScenarioId };
+      const result = validateWorkspace(JSON.parse(saved));
+      if (result.ok) {
+        return result.workspace;
       }
+
+      console.warn(
+        `Local workspace was rejected: ${result.error}`
+      );
     }
   } catch (e) {
     console.warn("Could not load local storage data, using fallback defaults:", e);
@@ -262,11 +250,18 @@ export const useProjectStore = create<ProjectState>((set) => ({
           );
           if (differenceDays === null) return s;
 
-          const updatedResources = s.resources.map(r => ({
-            ...r,
-            startDate: addDays(r.startDate, differenceDays, r.startDate),
-            endDate: addDays(r.endDate, differenceDays, r.endDate)
-          }));
+          const updatedResources = s.resources.map(r => {
+            const currentDirectHours = getResourceDirectHours(r);
+            const shiftedResource = {
+              ...r,
+              startDate: addDays(r.startDate, differenceDays, r.startDate),
+              endDate: addDays(r.endDate, differenceDays, r.endDate)
+            };
+            return synchronizeResourceFromHours(
+              shiftedResource,
+              currentDirectHours
+            );
+          });
 
           return {
             ...s,
@@ -324,6 +319,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
           const updated = { ...r, [field]: validatedValue };
 
           if (field === 'startDate' || field === 'endDate') {
+            const currentDirectHours = getResourceDirectHours(r);
             try {
               const dateComparison = compareDateOnly(
                 updated.startDate,
@@ -341,6 +337,10 @@ export const useProjectStore = create<ProjectState>((set) => ({
               updated.startDate = r.startDate;
               updated.endDate = r.endDate;
             }
+            return synchronizeResourceFromHours(
+              updated,
+              currentDirectHours
+            );
           }
           return updated;
         })
@@ -353,11 +353,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
-        resources: s.resources.map(r => {
-          if (r.id !== resId) return r;
-          const clampedVal = Math.min(100, Math.max(0, Math.round(Number(value)) || 0));
-          return { ...r, utilization: clampedVal };
-        })
+        resources: s.resources.map(r =>
+          r.id === resId
+            ? synchronizeResourceFromAllocation(r, value)
+            : r
+        )
       };
     })
   })),
@@ -367,17 +367,30 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
+        resources: s.resources.map(r =>
+          r.id === resId
+            ? synchronizeResourceFromHours(r, hours)
+            : r
+        )
+      };
+    })
+  })),
+
+  updateResourceDates: (resId, startDate, endDate) => set((state) => ({
+    scenarios: state.scenarios.map(s => {
+      if (s.id !== state.activeScenarioId) return s;
+      return {
+        ...s,
         resources: s.resources.map(r => {
           if (r.id !== resId) return r;
-          const targetHours = Math.max(0, Number(hours) || 0);
-          const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-          const maxPossibleHours = workingDays * 8;
+          const dateComparison = compareDateOnly(startDate, endDate);
+          if (dateComparison === null || dateComparison > 0) return r;
 
-          if (maxPossibleHours > 0) {
-            const calculatedAlloc = Math.round(Math.min(100, Math.max(0, (targetHours / maxPossibleHours) * 100)));
-            return { ...r, utilization: calculatedAlloc };
-          }
-          return r;
+          const currentDirectHours = getResourceDirectHours(r);
+          return synchronizeResourceFromHours(
+            { ...r, startDate, endDate },
+            currentDirectHours
+          );
         })
       };
     })
@@ -669,9 +682,7 @@ const computeScenarioTotals = (resourcesList: Resource[]) => {
 
   resourcesList.forEach(r => {
     try {
-      const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-      const standardHours = workingDays * 8;
-      const effectiveHours = standardHours * ((r.utilization || 0) / 100);
+      const effectiveHours = getResourceDirectHours(r);
 
       totalHours += effectiveHours;
       totalCost += effectiveHours * (r.costRate || 0);
@@ -1048,14 +1059,81 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   );
 };
 
+interface ResourceAllocationInputProps {
+  value: number;
+  onCommit: (allocation: number) => void;
+  colors: any;
+}
+
+const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({
+  value,
+  onCommit,
+  colors
+}) => {
+  const formattedValue = formatEditableNumber(value);
+  const [draft, setDraft] = useState(formattedValue);
+
+  useEffect(() => {
+    setDraft(formattedValue);
+  }, [formattedValue]);
+
+  const commit = () => {
+    const parsed = Number(draft);
+    if (Number.isFinite(parsed)) {
+      onCommit(clampAllocation(parsed));
+    } else {
+      setDraft(formattedValue);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min="0"
+      max="100"
+      step="0.01"
+      inputMode="decimal"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Escape') {
+          setDraft(formattedValue);
+          event.currentTarget.blur();
+        }
+      }}
+      className="compact-number-input"
+      style={{
+        width: '64px',
+        height: '38px',
+        padding: '0 7px',
+        margin: 0,
+        textAlign: 'center',
+        fontSize: '12px',
+        fontWeight: 700,
+        lineHeight: 1,
+        borderRadius: '9px',
+        border: `1px solid ${colors.border}`,
+        backgroundColor: colors.inputBg,
+        color: colors.text,
+        outline: 'none',
+        boxShadow: 'none'
+      }}
+      aria-label="Allocation percentage input"
+    />
+  );
+};
+
 interface ResourceHoursInputProps {
   value: number;
   onCommit: (hours: number) => void;
   colors: any;
+  max: number;
 }
 
-const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors }) => {
-  const formattedValue = Math.round(value).toString();
+const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max }) => {
+  const formattedValue = formatEditableNumber(value);
   const [draft, setDraft] = useState(formattedValue);
 
   useEffect(() => {
@@ -1075,7 +1153,9 @@ const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit
     <input
       type="number"
       min="0"
-      inputMode="numeric"
+      max={max}
+      step="0.01"
+      inputMode="decimal"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -1252,16 +1332,20 @@ export default function App() {
       fileReader.readAsText(event.target.files[0], "UTF-8");
       fileReader.onload = (e) => {
         try {
-          const parsed = JSON.parse(e.target?.result as string);
-          if (parsed && Array.isArray(parsed.scenarios) && typeof parsed.activeScenarioId === 'string') {
-            const importedActiveId = parsed.scenarios.some((scenario: Scenario) => scenario.id === parsed.activeScenarioId)
-              ? parsed.activeScenarioId
-              : (parsed.scenarios[0]?.id || '');
-            state.setEntireState(parsed.scenarios, importedActiveId);
-            triggerToast("Workspace loaded successfully!", "success");
-          } else {
-            triggerToast("Invalid JSON schema. Missing scenarios.", "error");
+          const result = validateWorkspace(
+            JSON.parse(e.target?.result as string)
+          );
+
+          if (!result.ok) {
+            triggerToast(`Invalid workspace: ${result.error}`, "error");
+            return;
           }
+
+          state.setEntireState(
+            result.workspace.scenarios,
+            result.workspace.activeScenarioId
+          );
+          triggerToast("Workspace loaded successfully!", "success");
         } catch (err) {
           triggerToast("Failed to parse JSON file.", "error");
         }
@@ -1309,8 +1393,11 @@ export default function App() {
         }
       }
 
-      state.updateResourceField(dragState.resId, 'startDate', newStart);
-      state.updateResourceField(dragState.resId, 'endDate', newEnd);
+      state.updateResourceDates(
+        dragState.resId,
+        newStart,
+        newEnd
+      );
     };
 
     const handleMouseUp = () => {
@@ -2038,7 +2125,7 @@ export default function App() {
               gap: '16px'
             }}>
               {[
-                { label: 'Effective Work Hours', value: `${activeTotals.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs` },
+                { label: 'Effective Work Hours', value: `${formatDisplayNumber(activeTotals.totalHours)} hrs` },
                 { label: 'Calculated Cost', value: `$${activeTotals.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
                 { label: 'Expected Revenue', value: `$${activeTotals.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
               ].map((stat, i) => (
@@ -2097,7 +2184,8 @@ export default function App() {
                 ) : (
                   activeScenario.resources.map(r => {
                     const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-                    const calculatedTotalHrs = workingDays * 8 * (r.utilization / 100);
+                    const calculatedTotalHrs = getResourceDirectHours(r);
+                    const capacityHours = getResourceCapacityHours(r);
                     const resourceTotalCost =
                       calculatedTotalHrs * (r.costRate || 0);
                     const resourceTotalBillable =
@@ -2288,10 +2376,10 @@ export default function App() {
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <span style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Allocation Rate</span>
                                 <span style={{ fontSize: '10px', fontWeight: 700, color: colors.accent, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#e0e7ff', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {workingDays} weekdays
+                                  {workingDays} weekdays · {formatDisplayNumber(capacityHours, 0)} available hrs
                                 </span>
                               </div>
-                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{calculatedTotalHrs.toFixed(0)} hrs</span>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{formatDisplayNumber(calculatedTotalHrs)} hrs</span>
                             </div>
                             
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -2299,8 +2387,8 @@ export default function App() {
                                 type="range"
                                 min="0"
                                 max="100"
-                                step="5"
-                                value={r.utilization}
+                                step="0.01"
+                                value={roundForDisplay(r.utilization)}
                                 onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
                                 style={{
                                   flex: 1,
@@ -2308,29 +2396,12 @@ export default function App() {
                                 }}
                               />
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
+                                <ResourceAllocationInput
                                   value={r.utilization}
-                                  onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
-                                  className="compact-number-input"
-                                  style={{
-                                    width: '58px',
-                                    height: '38px',
-                                    padding: '0 7px',
-                                    margin: 0,
-                                    textAlign: 'center',
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    lineHeight: 1,
-                                    borderRadius: '9px',
-                                    border: `1px solid ${colors.border}`,
-                                    backgroundColor: colors.inputBg,
-                                    color: colors.text,
-                                    outline: 'none',
-                                    boxShadow: 'none'
-                                  }}
+                                  onCommit={(allocation) =>
+                                    state.updateResourceAllocation(r.id, allocation)
+                                  }
+                                  colors={colors}
                                 />
                                 <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 700 }}>%</span>
                               </div>
@@ -2365,6 +2436,7 @@ export default function App() {
                                 value={calculatedTotalHrs}
                                 onCommit={(hours) => state.updateResourceTotalHoursDirect(r.id, hours)}
                                 colors={colors}
+                                max={capacityHours}
                               />
                             </div>
 
@@ -2564,7 +2636,7 @@ export default function App() {
                                   textAlign: 'center',
                                   pointerEvents: 'none'
                                 }}>
-                                  {r.name || 'Consultant'} ({r.utilization}%)
+                                  {r.name || 'Consultant'} ({formatDisplayNumber(r.utilization)}%)
                                 </span>
 
                                 {/* Right resize handle */}
