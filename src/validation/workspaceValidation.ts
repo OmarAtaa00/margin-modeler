@@ -25,6 +25,7 @@ export type Scenario = {
 
 export type PersistedWorkspace = {
   activeScenarioId: string;
+  baseScenarioId: string | null;
   scenarios: Scenario[];
 };
 
@@ -285,6 +286,17 @@ export const validateWorkspace = (value: unknown): WorkspaceValidationResult => 
     };
   }
 
+  if (
+    value.baseScenarioId !== undefined &&
+    value.baseScenarioId !== null &&
+    typeof value.baseScenarioId !== 'string'
+  ) {
+    return {
+      ok: false,
+      error: 'The workspace has an invalid base scenario ID.'
+    };
+  }
+
   const scenarios: Scenario[] = [];
   const scenarioIds = new Set<string>();
 
@@ -307,11 +319,18 @@ export const validateWorkspace = (value: unknown): WorkspaceValidationResult => 
     ? value.activeScenarioId
     : scenarios[0]?.id ?? '';
 
+  const baseScenarioId =
+    typeof value.baseScenarioId === 'string' &&
+    scenarioIds.has(value.baseScenarioId)
+      ? value.baseScenarioId
+      : null;
+
   return {
     ok: true,
     workspace: {
       scenarios,
-      activeScenarioId
+      activeScenarioId,
+      baseScenarioId
     }
   };
 };

@@ -30,20 +30,27 @@ export type { Resource, Scenario } from './validation/workspaceValidation';
 
 type ProjectState = {
   activeScenarioId: string;
+  baseScenarioId: string | null;
   scenarios: Scenario[];
   switchScenario: (id: string) => void;
   createNewScenario: () => void;
   cloneActiveScenario: () => void;
+  setBaseScenario: (id: string | null) => void;
   deleteScenario: (id: string) => void;
   updateScenarioName: (name: string) => void;
   updateProjectStartDate: (date: string) => void;
   addResource: () => void;
+  cloneResource: (id: string) => void;
   removeResource: (id: string) => void;
   updateResourceField: (resId: string, field: keyof Resource, value: any) => void;
   updateResourceAllocation: (resId: string, value: number) => void;
   updateResourceTotalHoursDirect: (resId: string, hours: number) => void;
   updateResourceDates: (resId: string, startDate: string, endDate: string) => void;
-  setEntireState: (scenarios: Scenario[], activeScenarioId: string) => void;
+  setEntireState: (
+    scenarios: Scenario[],
+    activeScenarioId: string,
+    baseScenarioId?: string | null
+  ) => void;
 };
 
 const roundForDisplay = (value: number, fractionDigits = 2): number => {
@@ -150,6 +157,7 @@ const getInitialState = () => {
   // Fallback defaults
   return {
     activeScenarioId: 'scen-1',
+    baseScenarioId: null,
     scenarios: [
       {
         id: 'scen-1',
@@ -173,8 +181,15 @@ const getInitialState = () => {
 
 const initialState = getInitialState();
 
+const isActiveScenarioLocked = (state: Pick<ProjectState, 'activeScenarioId' | 'baseScenarioId'>): boolean =>
+  state.baseScenarioId !== null && state.activeScenarioId === state.baseScenarioId;
+
+const createResourceId = (): string =>
+  `res-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 export const useProjectStore = create<ProjectState>((set) => ({
   activeScenarioId: initialState.activeScenarioId,
+  baseScenarioId: initialState.baseScenarioId,
   scenarios: initialState.scenarios,
 
   switchScenario: (id) => set({ activeScenarioId: id }),
@@ -201,7 +216,10 @@ export const useProjectStore = create<ProjectState>((set) => ({
       id,
       name: `${active.name} (Copy)`,
       projectStartDate: active.projectStartDate,
-      resources: JSON.parse(JSON.stringify(active.resources))
+      resources: active.resources.map((resource) => ({
+        ...resource,
+        id: createResourceId()
+      }))
     };
     return {
       scenarios: [...state.scenarios, clonedScenario],
@@ -209,7 +227,20 @@ export const useProjectStore = create<ProjectState>((set) => ({
     };
   }),
 
+  setBaseScenario: (id) => set((state) => {
+    if (id === null) {
+      return { baseScenarioId: null };
+    }
+
+    if (!state.scenarios.some((scenario) => scenario.id === id)) {
+      return state;
+    }
+
+    return { baseScenarioId: id };
+  }),
+
   deleteScenario: (id) => set((state) => {
+    if (state.baseScenarioId === id) return state;
     const indexToDelete = state.scenarios.findIndex(s => s.id === id);
     if (indexToDelete === -1) return state;
 
@@ -229,6 +260,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   }),
 
   updateScenarioName: (name) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
     const editableName = String(name).slice(0, 50);
     return {
       scenarios: state.scenarios.map(s => s.id === state.activeScenarioId ? { ...s, name: editableName } : s)
@@ -236,6 +269,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   }),
 
   updateProjectStartDate: (date) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
     try {
       if (!parseDateOnlyUtc(date)) return {};
 
@@ -276,31 +311,66 @@ export const useProjectStore = create<ProjectState>((set) => ({
     }
   }),
 
-  addResource: () => set((state) => ({
-    scenarios: state.scenarios.map(s => {
-      if (s.id !== state.activeScenarioId) return s;
-      const newRes: Resource = {
-        id: `res-${Date.now()}`,
-        name: `Consultant ${s.resources.length + 1}`,
-        costRate: 45,
-        billRate: 150,
-        startDate: s.projectStartDate,
-        endDate: addWeeks(s.projectStartDate, 12, DEFAULT_PROJECT_START),
-        utilization: 100
-      };
-      return { ...s, resources: [...s.resources, newRes] };
-    })
-  })),
+  addResource: () => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
 
-  removeResource: (id) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
-      if (s.id !== state.activeScenarioId) return s;
-      return { ...s, resources: s.resources.filter(r => r.id !== id) };
-    })
-  })),
+    return {
+      scenarios: state.scenarios.map(s => {
+        if (s.id !== state.activeScenarioId) return s;
+        const newRes = synchronizeResourceFromAllocation<Resource>({
+          id: createResourceId(),
+          name: `Consultant ${s.resources.length + 1}`,
+          costRate: 45,
+          billRate: 150,
+          startDate: s.projectStartDate,
+          endDate: addWeeks(s.projectStartDate, 12, DEFAULT_PROJECT_START),
+          utilization: 100
+        }, 100);
+        return { ...s, resources: [newRes, ...s.resources] };
+      })
+    };
+  }),
 
-  updateResourceField: (resId, field, value) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
+  cloneResource: (id) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map((scenario) => {
+        if (scenario.id !== state.activeScenarioId) return scenario;
+
+        const sourceIndex = scenario.resources.findIndex((resource) => resource.id === id);
+        if (sourceIndex === -1) return scenario;
+
+        const source = scenario.resources[sourceIndex];
+        const clonedResource: Resource = {
+          ...source,
+          id: createResourceId(),
+          name: `${source.name || 'Consultant'} (Copy)`
+        };
+
+        const resources = [...scenario.resources];
+        resources.splice(sourceIndex, 0, clonedResource);
+        return { ...scenario, resources };
+      })
+    };
+  }),
+
+  removeResource: (id) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map(s => {
+        if (s.id !== state.activeScenarioId) return s;
+        return { ...s, resources: s.resources.filter(r => r.id !== id) };
+      })
+    };
+  }),
+
+  updateResourceField: (resId, field, value) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map(s => {
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
@@ -346,10 +416,14 @@ export const useProjectStore = create<ProjectState>((set) => ({
         })
       };
     })
-  })),
+    };
+  }),
 
-  updateResourceAllocation: (resId, value) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
+  updateResourceAllocation: (resId, value) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map(s => {
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
@@ -360,10 +434,14 @@ export const useProjectStore = create<ProjectState>((set) => ({
         )
       };
     })
-  })),
+    };
+  }),
 
-  updateResourceTotalHoursDirect: (resId, hours) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
+  updateResourceTotalHoursDirect: (resId, hours) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map(s => {
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
@@ -374,10 +452,14 @@ export const useProjectStore = create<ProjectState>((set) => ({
         )
       };
     })
-  })),
+    };
+  }),
 
-  updateResourceDates: (resId, startDate, endDate) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
+  updateResourceDates: (resId, startDate, endDate) => set((state) => {
+    if (isActiveScenarioLocked(state)) return state;
+
+    return {
+      scenarios: state.scenarios.map(s => {
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
@@ -394,9 +476,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
         })
       };
     })
-  })),
+    };
+  }),
 
-  setEntireState: (scenarios, activeScenarioId) => set({ scenarios, activeScenarioId })
+  setEntireState: (scenarios, activeScenarioId, baseScenarioId = null) =>
+    set({ scenarios, activeScenarioId, baseScenarioId })
 }));
 
 // // Setup auto-save listener on local memory
@@ -521,7 +605,8 @@ export const initializeProjectPersistence =
 
       let workspace: PersistedWorkspace = {
         scenarios: currentState.scenarios,
-        activeScenarioId: currentState.activeScenarioId
+        activeScenarioId: currentState.activeScenarioId,
+        baseScenarioId: currentState.baseScenarioId
       };
 
       try {
@@ -565,7 +650,8 @@ export const initializeProjectPersistence =
 
         useProjectStore.getState().setEntireState(
           workspace.scenarios,
-          workspace.activeScenarioId
+          workspace.activeScenarioId,
+          workspace.baseScenarioId
         );
 
         // Ensure the primary store contains valid data.
@@ -600,7 +686,8 @@ export const initializeProjectPersistence =
           (state) => {
             const nextWorkspace = cloneWorkspace({
               scenarios: state.scenarios,
-              activeScenarioId: state.activeScenarioId
+              activeScenarioId: state.activeScenarioId,
+              baseScenarioId: state.baseScenarioId
             });
 
             saveLocalStorageBackup(nextWorkspace);
@@ -655,7 +742,8 @@ export const initializeProjectPersistence =
           (state) => {
             saveLocalStorageBackup({
               scenarios: state.scenarios,
-              activeScenarioId: state.activeScenarioId
+              activeScenarioId: state.activeScenarioId,
+              baseScenarioId: state.baseScenarioId
             });
           }
         );
@@ -727,12 +815,49 @@ const getMarginTheme = (margin: number, isDark: boolean) => {
   }
 };
 
+const getScenarioMarginTheme = (
+  margin: number,
+  baseMargin: number | null,
+  isBaseScenario: boolean,
+  isDark: boolean
+) => {
+  if (baseMargin === null) {
+    return getMarginTheme(margin, isDark);
+  }
+
+  if (isBaseScenario) {
+    return {
+      bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
+      border: isDark ? 'rgba(96, 165, 250, 0.35)' : '#bfdbfe',
+      text: isDark ? '#93c5fd' : '#1d4ed8',
+      badge: isDark ? 'rgba(59, 130, 246, 0.2)' : '#dbeafe'
+    };
+  }
+
+  if (margin >= baseMargin) {
+    return {
+      bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
+      border: isDark ? 'rgba(16, 185, 129, 0.3)' : '#a7f3d0',
+      text: isDark ? '#34d399' : '#047857',
+      badge: isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'
+    };
+  }
+
+  return {
+    bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
+    border: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca',
+    text: isDark ? '#f87171' : '#b91c1c',
+    badge: isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2'
+  };
+};
+
 interface CustomDatePickerProps {
   value: string;
   onChange: (date: string) => void;
   isDark: boolean;
   colors: any;
   align?: 'left' | 'right';
+  disabled?: boolean;
 }
 
 const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
@@ -740,13 +865,16 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   onChange,
   isDark,
   colors,
-  align = 'left'
+  align = 'left',
+  disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [popoverLayout, setPopoverLayout] = useState({ left: 0, width: 280 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const togglePicker = () => {
+    if (disabled) return;
+
     if (!isOpen && containerRef.current && typeof window !== 'undefined') {
       const rect = containerRef.current.getBoundingClientRect();
       const viewportPadding = 12;
@@ -861,6 +989,7 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-label={`Choose date. Current date: ${displayLabel}`}
+        disabled={disabled}
         style={{
           width: '100%',
           display: 'flex',
@@ -873,7 +1002,8 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
           color: colors.text,
           fontSize: '13px',
           fontWeight: 500,
-          cursor: 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.68 : 1,
           outline: 'none',
           boxSizing: 'border-box',
           transition: 'border-color 0.15s ease, box-shadow 0.15s',
@@ -1063,12 +1193,14 @@ interface ResourceAllocationInputProps {
   value: number;
   onCommit: (allocation: number) => void;
   colors: any;
+  disabled?: boolean;
 }
 
 const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({
   value,
   onCommit,
-  colors
+  colors,
+  disabled = false
 }) => {
   const formattedValue = formatEditableNumber(value);
   const [draft, setDraft] = useState(formattedValue);
@@ -1094,6 +1226,7 @@ const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({
       step="0.01"
       inputMode="decimal"
       value={draft}
+      disabled={disabled}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {
@@ -1117,6 +1250,8 @@ const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({
         border: `1px solid ${colors.border}`,
         backgroundColor: colors.inputBg,
         color: colors.text,
+        cursor: disabled ? 'not-allowed' : 'text',
+        opacity: disabled ? 0.68 : 1,
         outline: 'none',
         boxShadow: 'none'
       }}
@@ -1130,9 +1265,10 @@ interface ResourceHoursInputProps {
   onCommit: (hours: number) => void;
   colors: any;
   max: number;
+  disabled?: boolean;
 }
 
-const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max }) => {
+const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max, disabled = false }) => {
   const formattedValue = formatEditableNumber(value);
   const [draft, setDraft] = useState(formattedValue);
 
@@ -1157,6 +1293,7 @@ const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit
       step="0.01"
       inputMode="decimal"
       value={draft}
+      disabled={disabled}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -1179,6 +1316,8 @@ const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit
         border: `1px solid ${colors.border}`,
         backgroundColor: colors.inputBg,
         color: colors.text,
+        cursor: disabled ? 'not-allowed' : 'text',
+        opacity: disabled ? 0.68 : 1,
         outline: 'none',
         boxShadow: 'none',
         margin: 0
@@ -1247,6 +1386,11 @@ export default function App() {
   };
 
   const requestScenarioDeletion = (scenario: Scenario) => {
+    if (state.baseScenarioId === scenario.id) {
+      triggerToast('The base project is locked. Remove its Base status before deleting it.', 'error');
+      return;
+    }
+
     setConfirmation({
       title: 'Are you sure you want to delete this project tab?',
       message: `“${scenario.name}” and all of its resource, schedule, rate, and margin data will be permanently deleted. This action cannot be undone.`,
@@ -1260,6 +1404,11 @@ export default function App() {
   };
 
   const requestResourceDeletion = (resource: Resource) => {
+    if (state.baseScenarioId === state.activeScenarioId) {
+      triggerToast('The base project is locked. Clone it to edit assignments.', 'error');
+      return;
+    }
+
     setConfirmation({
       title: 'Are you sure you want to delete this resource?',
       message: `“${resource.name}” and all of its assignment data will be permanently removed from this project. This action cannot be undone.`,
@@ -1311,6 +1460,7 @@ export default function App() {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
         scenarios: state.scenarios,
         activeScenarioId: state.activeScenarioId,
+        baseScenarioId: state.baseScenarioId,
         exportedAt: new Date().toISOString()
       }, null, 2));
       
@@ -1343,7 +1493,8 @@ export default function App() {
 
           state.setEntireState(
             result.workspace.scenarios,
-            result.workspace.activeScenarioId
+            result.workspace.activeScenarioId,
+            result.workspace.baseScenarioId
           );
           triggerToast("Workspace loaded successfully!", "success");
         } catch (err) {
@@ -1358,6 +1509,7 @@ export default function App() {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!timelineRef.current) return;
+      if (state.baseScenarioId === state.activeScenarioId) return;
       const timelineWidth = timelineRef.current.getBoundingClientRect().width;
       const pxPerDay = (timelineWidth / 12) / 7;
       const deltaX = e.clientX - dragState.startX;
@@ -1413,8 +1565,17 @@ export default function App() {
   }, [dragState]);
 
   const activeScenario = state.scenarios.find(s => s.id === state.activeScenarioId) || state.scenarios[0];
+  const baseScenario = state.scenarios.find(s => s.id === state.baseScenarioId) ?? null;
   const activeTotals = computeScenarioTotals(activeScenario ? activeScenario.resources : []);
-  const activeMarginTheme = getMarginTheme(activeTotals.margin, isDark);
+  const baseTotals = baseScenario ? computeScenarioTotals(baseScenario.resources) : null;
+  const activeIsBase = activeScenario?.id === state.baseScenarioId;
+  const activeMarginDelta = baseTotals ? activeTotals.margin - baseTotals.margin : null;
+  const activeMarginTheme = getScenarioMarginTheme(
+    activeTotals.margin,
+    baseTotals?.margin ?? null,
+    activeIsBase,
+    isDark
+  );
 
   const isDesktop = windowWidth >= 1180;
   const isMobile = windowWidth < 640;
@@ -1794,6 +1955,7 @@ export default function App() {
           >
             {state.scenarios.map(s => {
               const isActive = s.id === state.activeScenarioId;
+              const isBase = s.id === state.baseScenarioId;
               return (
                 <div
                   key={s.id}
@@ -1844,13 +2006,27 @@ export default function App() {
                       <span aria-hidden="true" style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: colors.primary, flexShrink: 0 }} />
                     )}
                     <span style={{ maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                    {isBase && (
+                      <span style={{
+                        padding: '3px 6px',
+                        borderRadius: '999px',
+                        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.22)' : '#dbeafe',
+                        color: isDark ? '#93c5fd' : '#1d4ed8',
+                        fontSize: '8px',
+                        fontWeight: 900,
+                        letterSpacing: '0.06em'
+                      }}>
+                        BASE
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
                     className="scenario-tab-delete"
                     onClick={() => requestScenarioDeletion(s)}
-                    aria-label={`Delete ${s.name}`}
-                    title={`Delete ${s.name}`}
+                    disabled={isBase}
+                    aria-label={isBase ? `${s.name} is the base project` : `Delete ${s.name}`}
+                    title={isBase ? 'Remove Base status before deleting this project' : `Delete ${s.name}`}
                     style={{
                       width: '28px',
                       height: '28px',
@@ -1863,7 +2039,8 @@ export default function App() {
                       boxShadow: 'none',
                       WebkitAppearance: 'none',
                       appearance: 'none',
-                      cursor: 'pointer',
+                      cursor: isBase ? 'not-allowed' : 'pointer',
+                      opacity: isBase ? 0.42 : 1,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2019,21 +2196,80 @@ export default function App() {
                 gap: isMobile ? '16px' : '24px'
               }}>
                 <div style={{ minWidth: 0 }}>
-                  <span style={{
-                    display: 'block',
-                    marginBottom: '5px',
-                    color: colors.textMuted,
-                    fontSize: '9px',
-                    fontWeight: 800,
-                    letterSpacing: '0.09em',
-                    textTransform: 'uppercase'
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    marginBottom: '7px',
+                    flexWrap: 'wrap'
                   }}>
-                    Active project
-                  </span>
+                    <span style={{
+                      color: colors.textMuted,
+                      fontSize: '9px',
+                      fontWeight: 800,
+                      letterSpacing: '0.09em',
+                      textTransform: 'uppercase'
+                    }}>
+                      Active project
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        state.setBaseScenario(activeIsBase ? null : activeScenario.id);
+                        triggerToast(
+                          activeIsBase
+                            ? 'Base comparison removed. The project is editable again.'
+                            : `${activeScenario.name} is now the locked base project.`
+                        );
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        minHeight: '32px',
+                        padding: '5px 10px 5px 6px',
+                        borderRadius: '999px',
+                        border: `1px solid ${activeIsBase ? activeMarginTheme.border : colors.border}`,
+                        backgroundColor: activeIsBase ? activeMarginTheme.bg : colors.inputBg,
+                        color: activeIsBase ? activeMarginTheme.text : colors.textMuted,
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: 'none',
+                        margin: 0
+                      }}
+                      aria-pressed={activeIsBase}
+                      title={activeIsBase ? 'Remove Base status and unlock this project' : 'Use this project as the margin comparison base'}
+                    >
+                      <span style={{
+                        width: '28px',
+                        height: '18px',
+                        padding: '2px',
+                        borderRadius: '999px',
+                        backgroundColor: activeIsBase ? colors.primary : colors.border,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: activeIsBase ? 'flex-end' : 'flex-start',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.18s ease'
+                      }}>
+                        <span style={{
+                          width: '14px',
+                          height: '14px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ffffff',
+                          boxShadow: '0 1px 3px rgba(15, 23, 42, 0.28)'
+                        }} />
+                      </span>
+                      {activeIsBase ? 'Base locked' : state.baseScenarioId ? 'Make new base' : 'Set as base'}
+                    </button>
+                  </div>
                   <input
                     className="project-name-input"
                     type="text"
                     value={activeScenario ? activeScenario.name : ''}
+                    disabled={activeIsBase}
                     onChange={(e) => state.updateScenarioName(e.target.value)}
                     style={{
                       display: 'block',
@@ -2054,9 +2290,13 @@ export default function App() {
                       WebkitAppearance: 'none',
                       appearance: 'none',
                       color: colors.text,
+                      cursor: activeIsBase ? 'not-allowed' : 'text',
+                      opacity: activeIsBase ? 0.72 : 1,
                       outline: 'none'
                     }}
-                    onFocus={(e) => e.currentTarget.style.borderBottomColor = colors.primary}
+                    onFocus={(e) => {
+                      if (!activeIsBase) e.currentTarget.style.borderBottomColor = colors.primary;
+                    }}
                     onBlur={(e) => {
                       e.currentTarget.style.borderBottomColor = 'transparent';
                       state.updateScenarioName(e.currentTarget.value.trim() || 'Unnamed Scenario');
@@ -2081,13 +2321,30 @@ export default function App() {
                         }}
                         isDark={isDark}
                         colors={colors}
+                        disabled={activeIsBase}
                       />
                     </div>
                   </div>
+
+                  {activeIsBase && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: `1px solid ${activeMarginTheme.border}`,
+                      backgroundColor: activeMarginTheme.bg,
+                      color: activeMarginTheme.text,
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      lineHeight: 1.45
+                    }}>
+                      🔒 This base project is read-only. Use Clone Active to create an editable comparison.
+                    </div>
+                  )}
                 </div>
 
                 <div style={{
-                  width: isMobile ? '100%' : '148px',
+                  width: isMobile ? '100%' : '168px',
                   minHeight: '88px',
                   padding: '14px 16px',
                   borderRadius: '12px',
@@ -2109,11 +2366,18 @@ export default function App() {
                     letterSpacing: '0.08em',
                     opacity: 0.82
                   }}>
-                    Scenario margin
+                    {activeIsBase ? 'Base margin' : baseTotals ? 'Compared margin' : 'Scenario margin'}
                   </span>
                   <div style={{ fontSize: '26px', lineHeight: 1, fontWeight: 900, letterSpacing: '-0.03em' }}>
                     {activeTotals.margin.toFixed(1)}%
                   </div>
+                  {baseTotals && (
+                    <span style={{ fontSize: '9px', fontWeight: 800, marginTop: '5px', opacity: 0.86 }}>
+                      {activeIsBase
+                        ? 'Comparison reference'
+                        : `${activeMarginDelta !== null && activeMarginDelta >= 0 ? '+' : ''}${activeMarginDelta?.toFixed(1)} pts vs ${baseTotals.margin.toFixed(1)}%`}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -2147,6 +2411,7 @@ export default function App() {
               <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Resources & Assignments</h2>
                 <button
+                  disabled={activeIsBase}
                   onClick={() => {
                     state.addResource();
                     triggerToast("New resource assignment added!");
@@ -2159,7 +2424,8 @@ export default function App() {
                     borderRadius: '8px',
                     fontWeight: 600,
                     fontSize: '13px',
-                    cursor: 'pointer',
+                    cursor: activeIsBase ? 'not-allowed' : 'pointer',
+                    opacity: activeIsBase ? 0.55 : 1,
                     boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)',
                     display: 'flex',
                     alignItems: 'center',
@@ -2214,6 +2480,7 @@ export default function App() {
                             <input
                               type="text"
                               value={r.name}
+                              disabled={activeIsBase}
                               onChange={(e) => state.updateResourceField(r.id, 'name', e.target.value)}
                               onBlur={(e) => state.updateResourceField(r.id, 'name', e.currentTarget.value.trim() || 'Consultant')}
                               placeholder="e.g. Senior Architect"
@@ -2227,7 +2494,9 @@ export default function App() {
                                 fontSize: '13px',
                                 outline: 'none',
                                 boxSizing: 'border-box',
-                                marginTop: '4px'
+                                marginTop: '4px',
+                                cursor: activeIsBase ? 'not-allowed' : 'text',
+                                opacity: activeIsBase ? 0.68 : 1
                               }}
                             />
                           </div>
@@ -2239,6 +2508,7 @@ export default function App() {
                               min="0"
                               max="10000"
                               value={r.costRate === 0 ? '' : r.costRate}
+                              disabled={activeIsBase}
                               onChange={(e) => state.updateResourceField(r.id, 'costRate', e.target.value)}
                               style={{
                                 width: '100%',
@@ -2250,7 +2520,9 @@ export default function App() {
                                 fontSize: '13px',
                                 outline: 'none',
                                 boxSizing: 'border-box',
-                                marginTop: '4px'
+                                marginTop: '4px',
+                                cursor: activeIsBase ? 'not-allowed' : 'text',
+                                opacity: activeIsBase ? 0.68 : 1
                               }}
                               placeholder="0"
                             />
@@ -2263,6 +2535,7 @@ export default function App() {
                               min="0"
                               max="10000"
                               value={r.billRate === 0 ? '' : r.billRate}
+                              disabled={activeIsBase}
                               onChange={(e) => state.updateResourceField(r.id, 'billRate', e.target.value)}
                               style={{
                                 width: '100%',
@@ -2274,7 +2547,9 @@ export default function App() {
                                 fontSize: '13px',
                                 outline: 'none',
                                 boxSizing: 'border-box',
-                                marginTop: '4px'
+                                marginTop: '4px',
+                                cursor: activeIsBase ? 'not-allowed' : 'text',
+                                opacity: activeIsBase ? 0.68 : 1
                               }}
                               placeholder="0"
                             />
@@ -2288,6 +2563,7 @@ export default function App() {
                               onChange={(date) => state.updateResourceField(r.id, 'startDate', date)}
                               isDark={isDark}
                               colors={colors}
+                              disabled={activeIsBase}
                             />
                           </div>
 
@@ -2299,6 +2575,7 @@ export default function App() {
                               isDark={isDark}
                               colors={colors}
                               align="right"
+                              disabled={activeIsBase}
                             />
                           </div>
 
@@ -2389,10 +2666,12 @@ export default function App() {
                                 max="100"
                                 step="0.01"
                                 value={roundForDisplay(r.utilization)}
+                                disabled={activeIsBase}
                                 onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
                                 style={{
                                   flex: 1,
-                                  cursor: 'pointer'
+                                  cursor: activeIsBase ? 'not-allowed' : 'pointer',
+                                  opacity: activeIsBase ? 0.62 : 1
                                 }}
                               />
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2402,6 +2681,7 @@ export default function App() {
                                     state.updateResourceAllocation(r.id, allocation)
                                   }
                                   colors={colors}
+                                  disabled={activeIsBase}
                                 />
                                 <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 700 }}>%</span>
                               </div>
@@ -2437,15 +2717,49 @@ export default function App() {
                                 onCommit={(hours) => state.updateResourceTotalHoursDirect(r.id, hours)}
                                 colors={colors}
                                 max={capacityHours}
+                                disabled={activeIsBase}
                               />
                             </div>
 
                             <button
                               type="button"
+                              onClick={() => {
+                                state.cloneResource(r.id);
+                                triggerToast(`${r.name || 'Resource'} cloned above the original.`);
+                              }}
+                              disabled={activeIsBase}
+                              aria-label={`Clone ${r.name}`}
+                              title={activeIsBase ? 'The base project is locked' : `Clone ${r.name} above this assignment`}
+                              style={{
+                                width: '38px',
+                                height: '38px',
+                                padding: 0,
+                                margin: 0,
+                                backgroundColor: isDark ? 'rgba(59, 130, 246, 0.09)' : '#eff6ff',
+                                color: colors.primary,
+                                border: `1px solid ${isDark ? 'rgba(96, 165, 250, 0.28)' : '#bfdbfe'}`,
+                                borderRadius: '9px',
+                                boxShadow: 'none',
+                                cursor: activeIsBase ? 'not-allowed' : 'pointer',
+                                opacity: activeIsBase ? 0.46 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}
+                            >
+                              <svg style={{ width: '17px', height: '17px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 8h10a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2zm-2 8H5a2 2 0 01-2-2V5a2 2 0 012-2h8a2 2 0 012 2v1" />
+                              </svg>
+                            </button>
+
+                            <button
+                              type="button"
                               className="resource-delete-button"
                               onClick={() => requestResourceDeletion(r)}
-                              aria-label={`Delete ${r.name}`}
-                              title={`Delete ${r.name}`}
+                              disabled={activeIsBase}
+                              aria-label={activeIsBase ? `${r.name} is locked` : `Delete ${r.name}`}
+                              title={activeIsBase ? 'The base project is locked' : `Delete ${r.name}`}
                               style={{
                                 width: '38px',
                                 height: '38px',
@@ -2458,7 +2772,8 @@ export default function App() {
                                 boxShadow: 'none',
                                 WebkitAppearance: 'none',
                                 appearance: 'none',
-                                cursor: 'pointer',
+                                cursor: activeIsBase ? 'not-allowed' : 'pointer',
+                                opacity: activeIsBase ? 0.46 : 1,
                                 transition: 'background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2491,7 +2806,9 @@ export default function App() {
                 <svg style={{ width: '20px', height: '20px', color: colors.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                Gantt Timeline Schedule (Drag to shift, drag edges to resize)
+                {activeIsBase
+                  ? 'Gantt Timeline Schedule (Base project locked)'
+                  : 'Gantt Timeline Schedule (Drag to shift, drag edges to resize)'}
               </h3>
 
               <div style={{ overflowX: 'auto' }} className="custom-scroll">
@@ -2590,10 +2907,13 @@ export default function App() {
                                   padding: '0 4px',
                                   boxSizing: 'border-box',
                                   transition: dragState?.resId === r.id ? 'none' : 'all 0.2s ease',
-                                  cursor: dragState?.resId === r.id ? 'grabbing' : 'grab',
+                                  cursor: activeIsBase ? 'default' : (dragState?.resId === r.id ? 'grabbing' : 'grab'),
+                                  opacity: activeIsBase ? 0.78 : 1,
                                   userSelect: 'none'
                                 }}
                                 onMouseDown={(e) => {
+                                  if (activeIsBase) return;
+
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   const clickX = e.clientX - rect.left;
                                   const edgeThreshold = 10;
@@ -2621,7 +2941,7 @@ export default function App() {
                                   height: '50%',
                                   borderRadius: '2px',
                                   backgroundColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#818cf8',
-                                  cursor: 'ew-resize'
+                                  cursor: activeIsBase ? 'default' : 'ew-resize'
                                 }} />
 
                                 <span style={{ 
@@ -2645,7 +2965,7 @@ export default function App() {
                                   height: '50%',
                                   borderRadius: '2px',
                                   backgroundColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#818cf8',
-                                  cursor: 'ew-resize'
+                                  cursor: activeIsBase ? 'default' : 'ew-resize'
                                 }} />
                               </div>
                             ) : (
@@ -2682,14 +3002,25 @@ export default function App() {
                   </svg>
                   Scenario Matrix Comparison
                 </h3>
-                <p style={{ color: colors.textMuted, fontSize: '11px', marginTop: '4px', margin: 0 }}>Track and compare draft plans with zero-config native tracking.</p>
+                <p style={{ color: colors.textMuted, fontSize: '11px', marginTop: '4px', margin: 0 }}>
+                  {baseTotals
+                    ? 'Green margins meet or beat the base. Red margins are below the base.'
+                    : 'Set one project as Base to enable green/red margin comparison.'}
+                </p>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {state.scenarios.map(s => {
                   const totals = computeScenarioTotals(s.resources);
                   const isCurrent = s.id === state.activeScenarioId;
-                  const matrixTheme = getMarginTheme(totals.margin, isDark);
+                  const isBase = s.id === state.baseScenarioId;
+                  const marginDelta = baseTotals ? totals.margin - baseTotals.margin : null;
+                  const matrixTheme = getScenarioMarginTheme(
+                    totals.margin,
+                    baseTotals?.margin ?? null,
+                    isBase,
+                    isDark
+                  );
 
                   return (
                     <div
@@ -2701,7 +3032,7 @@ export default function App() {
                       style={{
                         padding: '16px',
                         borderRadius: '12px',
-                        border: `1px solid ${isCurrent ? colors.primary : colors.border}`,
+                        border: `1px solid ${isCurrent ? colors.primary : baseTotals ? matrixTheme.border : colors.border}`,
                         backgroundColor: isCurrent ? (isDark ? 'rgba(59, 130, 246, 0.08)' : '#eff6ff') : 'transparent',
                         cursor: 'pointer',
                         display: 'flex',
@@ -2714,10 +3045,28 @@ export default function App() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontSize: '13px', fontWeight: 700, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                           {isCurrent && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: colors.primary }} />}
+                          {isBase && (
+                            <span style={{
+                              padding: '2px 5px',
+                              borderRadius: '999px',
+                              backgroundColor: matrixTheme.badge,
+                              color: matrixTheme.text,
+                              fontSize: '8px',
+                              fontWeight: 900,
+                              letterSpacing: '0.06em'
+                            }}>BASE</span>
+                          )}
                         </div>
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '10px', color: colors.textMuted }}>Cost: ${Math.round(totals.totalCost).toLocaleString()}</span>
                           <span style={{ fontSize: '10px', color: colors.textMuted }}>Rev: ${Math.round(totals.totalRevenue).toLocaleString()}</span>
+                          {baseTotals && (
+                            <span style={{ fontSize: '10px', color: matrixTheme.text, fontWeight: 800 }}>
+                              {isBase
+                                ? 'Reference'
+                                : `${marginDelta !== null && marginDelta >= 0 ? '+' : ''}${marginDelta?.toFixed(1)} pts`}
+                            </span>
+                          )}
                         </div>
                       </div>
 
