@@ -12,13 +12,6 @@ import {
   getMonday,
   parseDateOnlyUtc
 } from './utils/dates';
-import {
-  clampAllocation,
-  getResourceCapacityHours,
-  getResourceDirectHours,
-  synchronizeResourceFromAllocation,
-  synchronizeResourceFromHours
-} from './utils/resourceCalculations';
 
 // Strongly typed definitions representing realistic calendar plans
 export type Resource = {
@@ -28,8 +21,7 @@ export type Resource = {
   billRate: number;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
-  utilization: number; // Decimal percentage from 0-100%
-  directHours?: number; // Exact planned hours; derived for older saved workspaces
+  utilization: number; // Whole number 0-100%
 };
 
 export type Scenario = {
@@ -53,24 +45,8 @@ type ProjectState = {
   updateResourceField: (resId: string, field: keyof Resource, value: any) => void;
   updateResourceAllocation: (resId: string, value: number) => void;
   updateResourceTotalHoursDirect: (resId: string, hours: number) => void;
-  updateResourceDates: (resId: string, startDate: string, endDate: string) => void;
   setEntireState: (scenarios: Scenario[], activeScenarioId: string) => void;
 };
-
-const roundForDisplay = (value: number, fractionDigits = 2): number => {
-  if (!Number.isFinite(value)) return 0;
-  const factor = 10 ** fractionDigits;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-};
-
-const formatEditableNumber = (value: number, fractionDigits = 2): string =>
-  String(roundForDisplay(value, fractionDigits));
-
-const formatDisplayNumber = (value: number, fractionDigits = 2): string =>
-  roundForDisplay(value, fractionDigits).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: fractionDigits
-  });
 
 // Default initial date set to the Monday of current context (July 13, 2026)
 const DEFAULT_PROJECT_START = "2026-07-13";
@@ -286,15 +262,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
           );
           if (differenceDays === null) return s;
 
-          const updatedResources = s.resources.map(r => {
-            const currentDirectHours = getResourceDirectHours(r);
-            const shiftedResource = {
-              ...r,
-              startDate: addDays(r.startDate, differenceDays, r.startDate),
-              endDate: addDays(r.endDate, differenceDays, r.endDate)
-            };
-            return synchronizeResourceFromHours(shiftedResource, currentDirectHours);
-          });
+          const updatedResources = s.resources.map(r => ({
+            ...r,
+            startDate: addDays(r.startDate, differenceDays, r.startDate),
+            endDate: addDays(r.endDate, differenceDays, r.endDate)
+          }));
 
           return {
             ...s,
@@ -352,7 +324,6 @@ export const useProjectStore = create<ProjectState>((set) => ({
           const updated = { ...r, [field]: validatedValue };
 
           if (field === 'startDate' || field === 'endDate') {
-            const currentDirectHours = getResourceDirectHours(r);
             try {
               const dateComparison = compareDateOnly(
                 updated.startDate,
@@ -370,7 +341,6 @@ export const useProjectStore = create<ProjectState>((set) => ({
               updated.startDate = r.startDate;
               updated.endDate = r.endDate;
             }
-            return synchronizeResourceFromHours(updated, currentDirectHours);
           }
           return updated;
         })
@@ -383,9 +353,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
-        resources: s.resources.map(r =>
-          r.id === resId ? synchronizeResourceFromAllocation(r, value) : r
-        )
+        resources: s.resources.map(r => {
+          if (r.id !== resId) return r;
+          const clampedVal = Math.min(100, Math.max(0, Math.round(Number(value)) || 0));
+          return { ...r, utilization: clampedVal };
+        })
       };
     })
   })),
@@ -395,28 +367,17 @@ export const useProjectStore = create<ProjectState>((set) => ({
       if (s.id !== state.activeScenarioId) return s;
       return {
         ...s,
-        resources: s.resources.map(r =>
-          r.id === resId ? synchronizeResourceFromHours(r, hours) : r
-        )
-      };
-    })
-  })),
-
-  updateResourceDates: (resId, startDate, endDate) => set((state) => ({
-    scenarios: state.scenarios.map(s => {
-      if (s.id !== state.activeScenarioId) return s;
-      return {
-        ...s,
         resources: s.resources.map(r => {
           if (r.id !== resId) return r;
-          const dateComparison = compareDateOnly(startDate, endDate);
-          if (dateComparison === null || dateComparison > 0) return r;
+          const targetHours = Math.max(0, Number(hours) || 0);
+          const workingDays = calculateWorkingDays(r.startDate, r.endDate);
+          const maxPossibleHours = workingDays * 8;
 
-          const currentDirectHours = getResourceDirectHours(r);
-          return synchronizeResourceFromHours(
-            { ...r, startDate, endDate },
-            currentDirectHours
-          );
+          if (maxPossibleHours > 0) {
+            const calculatedAlloc = Math.round(Math.min(100, Math.max(0, (targetHours / maxPossibleHours) * 100)));
+            return { ...r, utilization: calculatedAlloc };
+          }
+          return r;
         })
       };
     })
@@ -702,7 +663,9 @@ const computeScenarioTotals = (resourcesList: Resource[]) => {
 
   resourcesList.forEach(r => {
     try {
-      const effectiveHours = getResourceDirectHours(r);
+      const workingDays = calculateWorkingDays(r.startDate, r.endDate);
+      const standardHours = workingDays * 8;
+      const effectiveHours = standardHours * ((r.utilization || 0) / 100);
 
       totalHours += effectiveHours;
       totalCost += effectiveHours * (r.costRate || 0);
@@ -1079,77 +1042,14 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   );
 };
 
-interface ResourceAllocationInputProps {
-  value: number;
-  onCommit: (allocation: number) => void;
-  colors: any;
-}
-
-const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({ value, onCommit, colors }) => {
-  const formattedValue = formatEditableNumber(value);
-  const [draft, setDraft] = useState(formattedValue);
-
-  useEffect(() => {
-    setDraft(formattedValue);
-  }, [formattedValue]);
-
-  const commit = () => {
-    const parsed = Number(draft);
-    if (Number.isFinite(parsed)) {
-      onCommit(clampAllocation(parsed));
-    } else {
-      setDraft(formattedValue);
-    }
-  };
-
-  return (
-    <input
-      type="number"
-      min="0"
-      max="100"
-      step="0.01"
-      inputMode="decimal"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape') {
-          setDraft(formattedValue);
-          e.currentTarget.blur();
-        }
-      }}
-      className="compact-number-input"
-      style={{
-        width: '64px',
-        height: '38px',
-        padding: '0 7px',
-        margin: 0,
-        textAlign: 'center',
-        fontSize: '12px',
-        fontWeight: 700,
-        lineHeight: 1,
-        borderRadius: '9px',
-        border: `1px solid ${colors.border}`,
-        backgroundColor: colors.inputBg,
-        color: colors.text,
-        outline: 'none',
-        boxShadow: 'none'
-      }}
-      aria-label="Allocation percentage input"
-    />
-  );
-};
-
 interface ResourceHoursInputProps {
   value: number;
   onCommit: (hours: number) => void;
   colors: any;
-  max: number;
 }
 
-const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max }) => {
-  const formattedValue = formatEditableNumber(value);
+const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors }) => {
+  const formattedValue = Math.round(value).toString();
   const [draft, setDraft] = useState(formattedValue);
 
   useEffect(() => {
@@ -1169,9 +1069,7 @@ const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit
     <input
       type="number"
       min="0"
-      max={max}
-      step="0.01"
-      inputMode="decimal"
+      inputMode="numeric"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -1405,7 +1303,8 @@ export default function App() {
         }
       }
 
-      state.updateResourceDates(dragState.resId, newStart, newEnd);
+      state.updateResourceField(dragState.resId, 'startDate', newStart);
+      state.updateResourceField(dragState.resId, 'endDate', newEnd);
     };
 
     const handleMouseUp = () => {
@@ -2133,7 +2032,7 @@ export default function App() {
               gap: '16px'
             }}>
               {[
-                { label: 'Effective Work Hours', value: `${formatDisplayNumber(activeTotals.totalHours)} hrs` },
+                { label: 'Effective Work Hours', value: `${activeTotals.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs` },
                 { label: 'Calculated Cost', value: `$${activeTotals.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
                 { label: 'Expected Revenue', value: `$${activeTotals.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
               ].map((stat, i) => (
@@ -2192,8 +2091,7 @@ export default function App() {
                 ) : (
                   activeScenario.resources.map(r => {
                     const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-                    const calculatedTotalHrs = getResourceDirectHours(r);
-                    const capacityHours = getResourceCapacityHours(r);
+                    const calculatedTotalHrs = workingDays * 8 * (r.utilization / 100);
 
                     return (
                       <div key={r.id} className="hover-elevate" style={{
@@ -2320,10 +2218,10 @@ export default function App() {
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <span style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Allocation Rate</span>
                                 <span style={{ fontSize: '10px', fontWeight: 700, color: colors.accent, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#e0e7ff', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {workingDays} weekdays · {formatDisplayNumber(capacityHours, 0)} available hrs
+                                  {workingDays} weekdays
                                 </span>
                               </div>
-                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{formatDisplayNumber(calculatedTotalHrs)} hrs</span>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{calculatedTotalHrs.toFixed(0)} hrs</span>
                             </div>
                             
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -2331,8 +2229,8 @@ export default function App() {
                                 type="range"
                                 min="0"
                                 max="100"
-                                step="0.01"
-                                value={roundForDisplay(r.utilization)}
+                                step="5"
+                                value={r.utilization}
                                 onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
                                 style={{
                                   flex: 1,
@@ -2340,10 +2238,29 @@ export default function App() {
                                 }}
                               />
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <ResourceAllocationInput
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
                                   value={r.utilization}
-                                  onCommit={(allocation) => state.updateResourceAllocation(r.id, allocation)}
-                                  colors={colors}
+                                  onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
+                                  className="compact-number-input"
+                                  style={{
+                                    width: '58px',
+                                    height: '38px',
+                                    padding: '0 7px',
+                                    margin: 0,
+                                    textAlign: 'center',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    lineHeight: 1,
+                                    borderRadius: '9px',
+                                    border: `1px solid ${colors.border}`,
+                                    backgroundColor: colors.inputBg,
+                                    color: colors.text,
+                                    outline: 'none',
+                                    boxShadow: 'none'
+                                  }}
                                 />
                                 <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 700 }}>%</span>
                               </div>
@@ -2378,7 +2295,6 @@ export default function App() {
                                 value={calculatedTotalHrs}
                                 onCommit={(hours) => state.updateResourceTotalHoursDirect(r.id, hours)}
                                 colors={colors}
-                                max={capacityHours}
                               />
                             </div>
 
@@ -2578,7 +2494,7 @@ export default function App() {
                                   textAlign: 'center',
                                   pointerEvents: 'none'
                                 }}>
-                                  {r.name || 'Consultant'} ({formatDisplayNumber(r.utilization)}%)
+                                  {r.name || 'Consultant'} ({r.utilization}%)
                                 </span>
 
                                 {/* Right resize handle */}
