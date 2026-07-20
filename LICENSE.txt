@@ -1,0 +1,73 @@
+Margin Modeler Proprietary License
+Copyright © 2026 Omar AtaaAllah. All rights reserved.
+
+1. Ownership
+
+Margin Modeler, including its original source code, application design,
+documentation, branding, and distributed binaries, is owned by Omar AtaaAllah
+except for third-party components identified by their respective licenses.
+
+2. Limited permission to use
+
+Permission is granted to download, install, and use an unmodified official
+binary release of Margin Modeler for personal or internal evaluation purposes,
+subject to this license and applicable law.
+
+3. Restrictions
+
+Unless prior written permission is obtained from Omar AtaaAllah, you may not:
+
+- copy or redistribute the source code or application binaries, except for
+  ordinary backup copies;
+- modify, adapt, translate, or create derivative works from the original
+  Margin Modeler source code;
+- sublicense, sell, rent, lease, publish, or commercially exploit Margin
+  Modeler;
+- remove or alter copyright, attribution, trademark, or proprietary notices;
+- represent a modified or unofficial build as an official Margin Modeler
+  release; or
+- use the name, logo, or branding of Margin Modeler in a way that suggests
+  endorsement or affiliation.
+
+Nothing in this license restricts rights that cannot lawfully be restricted
+under applicable law.
+
+4. Third-party software
+
+Margin Modeler includes third-party software components. Those components are
+licensed separately by their respective copyright holders. This license does
+not replace or restrict the rights granted under valid third-party licenses.
+
+5. Alpha software
+
+Alpha and prerelease versions are provided for testing and evaluation. Features
+may change, data formats may change, and defects may occur. Users are responsible
+for maintaining independent backups of important data.
+
+6. No warranty
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, MARGIN MODELER IS PROVIDED
+“AS IS” AND “AS AVAILABLE,” WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+NONINFRINGEMENT, ACCURACY, RELIABILITY, OR AVAILABILITY.
+
+7. Limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, OMAR ATAAALLAH SHALL NOT BE
+LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR
+PUNITIVE DAMAGES, OR FOR LOSS OF DATA, PROFITS, REVENUE, BUSINESS, OR GOODWILL,
+ARISING FROM OR RELATED TO THE USE OF OR INABILITY TO USE MARGIN MODELER.
+
+8. Termination
+
+The permission granted by this license terminates automatically if its terms
+are violated. Upon termination, use and distribution must stop, except where
+continued possession or use is required by applicable law.
+
+9. Written permissions
+
+Requests for permissions beyond this license should be directed privately to
+the repository owner, Omar AtaaAllah.
+
+This document is a project license template and is not a substitute for advice
+from a qualified lawyer in the relevant jurisdiction.
