@@ -2,81 +2,103 @@
 
 ## Supported versions
 
-Margin Modeler is currently alpha software.
+Margin Modeler is currently in alpha development.
 
-| Version | Security support |
+| Version | Supported |
 |---|---|
-| Latest alpha release | Best-effort support |
-| Older alpha builds | Not supported |
-| Unofficial or modified builds | Not supported |
+| Latest published alpha release | Yes |
+| Earlier alpha releases | No |
+| Unofficial or modified builds | No |
 
-Only releases published through the official Margin Modeler repository should
-be treated as official builds.
+Security fixes are applied to the most recent published alpha release. Users
+should update to the latest available version before reporting an issue.
 
 ## Reporting a vulnerability
 
-Do not disclose a suspected vulnerability in a public issue.
+Please do not report security vulnerabilities through public GitHub issues,
+discussions, or pull requests.
 
-Use GitHub private vulnerability reporting when it is enabled for the
-repository. Otherwise, contact the repository owner, Omar AtaaAllah, privately
-through an agreed private channel.
+Use GitHub's private vulnerability reporting feature from the repository's
+**Security** tab. If private reporting is unavailable, contact the repository
+owner through a private channel.
 
-Include:
+A useful report should include:
 
+- the affected version;
+- the operating system and architecture;
 - a clear description of the issue;
-- affected version and operating system;
-- reproduction steps;
-- expected and actual behavior;
-- logs, screenshots, or a minimal proof of concept where safe;
-- potential security impact; and
-- whether the issue has already been disclosed elsewhere.
+- steps to reproduce it;
+- the expected and observed behavior;
+- the potential security impact; and
+- supporting logs or a minimal proof of concept, where safe.
 
-Do not include real customer, employer, or confidential project data.
+Please remove passwords, access tokens, personal information, employer data,
+and other confidential material before submitting a report.
 
-## Safe-harbor expectations
+## Coordinated disclosure
 
-Security research must:
+Please allow reasonable time for investigation and remediation before making a
+vulnerability public.
 
-- avoid privacy violations and destruction or corruption of data;
-- avoid service disruption;
-- use only accounts, devices, and data the researcher owns or is authorized to
-  test;
-- stop when sensitive information is encountered; and
-- allow reasonable time for investigation and remediation before disclosure.
+The project will make a reasonable effort to:
 
-This policy does not authorize testing against systems or users that the
-researcher does not own or have permission to test.
+1. acknowledge a complete report;
+2. assess its impact and reproducibility;
+3. communicate material progress when practical; and
+4. publish a fix or mitigation when appropriate.
 
-## Malware and endpoint-security detections
+Response times may vary because Margin Modeler is currently an independently
+maintained alpha project.
 
-An antivirus or EDR detection is important evidence, but it is not by itself
-proof that the application is malicious or clean.
+## Responsible research
 
-For a suspected false positive, preserve:
+Security testing is welcome when it is conducted responsibly.
 
-- exact detection name and detection ID;
-- affected file path;
-- SHA-256 hash;
-- installer and installed executable;
-- process and command-line details;
-- detection date and time;
-- action taken; and
-- the application’s digital-signature status.
+Researchers must:
 
-Do not recommend permanently disabling Microsoft Defender, CrowdStrike, or
-other endpoint protection.
+- test only systems, devices, accounts, and data they own or are authorized to
+  use;
+- avoid privacy violations;
+- avoid disrupting services or normal use;
+- avoid modifying or destroying data;
+- stop testing if sensitive information is encountered; and
+- comply with applicable laws.
 
-## Release security requirements
+This policy does not authorize testing of third-party systems or users without
+their permission.
 
-Official Windows releases should:
+## Official releases
 
-- be Authenticode signed by the verified publisher;
-- include a trusted timestamp;
-- have both the installed executable and installer signature verified;
-- publish SHA-256 checksums;
-- use protected CI secrets or a managed signing service;
-- avoid committing private keys, tokens, or certificate passwords; and
-- follow the project release checklist.
+Only builds published from the official Margin Modeler repository should be
+treated as official releases.
 
-See [WINDOWS_SIGNING.md](WINDOWS_SIGNING.md) and
-[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+Before installing a release:
+
+- confirm that it was downloaded from the official release page;
+- verify the published SHA-256 checksum when one is available; and
+- review the release notes for signing and platform-support information.
+
+Do not disable antivirus, endpoint protection, or operating-system security
+features to install Margin Modeler.
+
+## Scope
+
+Examples of issues that may qualify as security vulnerabilities include:
+
+- unauthorized access to local workspace data;
+- unsafe file import or export behavior;
+- arbitrary code execution;
+- privilege escalation;
+- insecure update or release-delivery behavior; and
+- exposure of secrets or sensitive data caused by the application.
+
+General feature requests, usability problems, calculation issues, and ordinary
+application crashes should be reported through the standard issue tracker
+unless they have a clear security impact.
+
+## Security updates
+
+Security-related changes may be included in a normal release or published as a
+dedicated security release, depending on severity and urgency.
+
+Copyright © 2026 Omar AtaaAllah. All rights reserved.
