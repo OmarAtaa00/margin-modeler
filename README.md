@@ -4,7 +4,7 @@ Margin Modeler is a desktop application for planning project scenarios, assignin
 
 > **Alpha software**
 >
-> Margin Modeler is currently under active development. The planned release version is `0.2.0-alpha.1`. Alpha builds are intended for testing and evaluation and may contain defects or incomplete features. Keep independent backups of important workspace exports.
+> Margin Modeler is currently under active development. The current release line is `0.2.0-alpha.1`. Alpha builds are intended for testing and evaluation and may contain defects or incomplete features. Keep independent backups of important workspace exports.
 
 ## Current capabilities
 
@@ -36,7 +36,7 @@ See [PRIVACY.md](PRIVACY.md) for details.
 
 ## Alpha release status
 
-The planned alpha release is:
+The current alpha release is:
 
 ```text
 0.2.0-alpha.1
@@ -45,6 +45,8 @@ The planned alpha release is:
 Alpha releases should be published as GitHub **prereleases** and should not be presented as production-stable builds.
 
 Windows binaries must not be described as signed until Authenticode signing has been configured and independently verified.
+
+The `0.2.0-alpha.1` workflow creates a **draft prerelease** for review. Its Windows installer is still unsigned until a verified Authenticode provider and protected signing credentials are configured.
 
 ## Installation
 
@@ -97,6 +99,22 @@ Create a production build:
 ```bash
 npm run build
 npm run tauri build
+```
+
+## Release integrity
+
+Each alpha build publishes platform-specific SHA-256 checksum files. Public-repository builds also receive GitHub artifact provenance attestations when supported by the repository plan. These controls help verify which workflow produced an artifact, but they do not replace Windows Authenticode signing or macOS Developer ID signing and notarization.
+
+Example checksum verification on Windows:
+
+```powershell
+Get-FileHash ".\Margin Modeler_0.2.0-alpha.1_x64-setup.exe" -Algorithm SHA256
+```
+
+Example verification on macOS:
+
+```bash
+shasum -a 256 "Margin Modeler_0.2.0-alpha.1_aarch64.dmg"
 ```
 
 ## Application data

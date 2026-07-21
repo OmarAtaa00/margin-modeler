@@ -22,3 +22,22 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Tauri and Rust build output
+src-tauri/target/
+
+# Local environment and signing material
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# Archive metadata and local documentation copies
+__MACOSX/
+README.backup.md
+margin-modeler-alpha-docs/

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "margin-modeler",
+  "productName": "Margin Modeler",
   "version": "../package.json",
   "identifier": "com.omarataaallah.margin-modeler",
   "build": {
@@ -12,13 +12,19 @@
   "app": {
     "windows": [
       {
-        "title": "margin-modeler",
+        "title": "Margin Modeler Alpha",
         "width": 800,
         "height": 600
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "font-src": "'self' data:",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "style-src": "'self' 'unsafe-inline'"
+      }
     }
   },
   "bundle": {
@@ -30,6 +36,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Business",
+    "copyright": "Copyright © 2026 Omar AtaaAllah. All rights reserved.",
+    "publisher": "Omar AtaaAllah",
+    "shortDescription": "Model project resources, direct hours, cost, billable value, and margin.",
+    "longDescription": "Margin Modeler is a local desktop application for planning project scenarios, assigning resources, and comparing project cost, billable value, and margin.",
+    "homepage": "https://github.com/OmarAtaa00/margin-modeler",
+    "licenseFile": "../LICENSE.txt"
   }
 }

@@ -1,9 +1,13 @@
 [package]
 name = "margin-modeler"
-version = "0.1.1"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.2.0-alpha.1"
+description = "Desktop project scenario, resource, and margin modeling application"
+authors = ["Omar AtaaAllah"]
 edition = "2021"
+publish = false
+license-file = "../LICENSE.txt"
+repository = "https://github.com/OmarAtaa00/margin-modeler"
+homepage = "https://github.com/OmarAtaa00/margin-modeler"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
