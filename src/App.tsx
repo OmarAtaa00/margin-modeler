@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import { load } from '@tauri-apps/plugin-store';
+import { supabase } from './supabaseClient';
 import {
   addDays,
   addWeeks,
@@ -103,11 +103,6 @@ const defaultResources: Resource[] = [
 ];
 
 const LOCAL_STORAGE_KEY = 'margin_modeler_local_workspace';
-const NATIVE_STORE_FILE = 'margin-modeler-store.json';
-const NATIVE_BACKUP_STORE_FILE =
-  'margin-modeler-store.backup.json';
-
-const NATIVE_WORKSPACE_KEY = 'workspace';
 
 const normalizeWorkspace = (
   value: unknown
@@ -483,281 +478,131 @@ export const useProjectStore = create<ProjectState>((set) => ({
     set({ scenarios, activeScenarioId, baseScenarioId })
 }));
 
-// // Setup auto-save listener on local memory
-// useProjectStore.subscribe((state) => {
-//   try {
-//     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-//       scenarios: state.scenarios,
-//       activeScenarioId: state.activeScenarioId
-//     }));
-//   } catch (e) {
-//     console.error("Local storage persistent save failed:", e);
-//   }
-// });
-// let persistencePromise: Promise<void> | null = null;
-// let stopPersistence: (() => void) | null = null;
-
-// export const initializeProjectPersistence =
-//   (): Promise<void> => {
-//     if (persistencePromise) {
-//       return persistencePromise;
-//     }
-
-//     persistencePromise = (async () => {
-//       const currentState = useProjectStore.getState();
-
-//       let workspace: PersistedWorkspace = {
-//         scenarios: currentState.scenarios,
-//         activeScenarioId: currentState.activeScenarioId
-//       };
-
-//       try {
-//         const store = await load(NATIVE_STORE_FILE, {
-//           autoSave: 200,
-//           defaults: {}
-//         });
-
-//         const savedWorkspace = normalizeWorkspace(
-//           await store.get<unknown>(NATIVE_WORKSPACE_KEY)
-//         );
-
-//         if (savedWorkspace) {
-//           // Native data exists, so it becomes the main data source.
-//           workspace = savedWorkspace;
-
-//           useProjectStore.getState().setEntireState(
-//             savedWorkspace.scenarios,
-//             savedWorkspace.activeScenarioId
-//           );
-//         } else {
-//           // No native data yet. Migrate the current localStorage
-//           // data or defaults into the native store.
-//           await store.set(
-//             NATIVE_WORKSPACE_KEY,
-//             workspace
-//           );
-
-//           await store.save();
-//         }
-
-//         // Keep localStorage temporarily as a recovery copy.
-//         saveLocalStorageBackup(workspace);
-
-//         stopPersistence?.();
-
-//         stopPersistence = useProjectStore.subscribe(
-//           (state) => {
-//             const nextWorkspace: PersistedWorkspace = {
-//               scenarios: state.scenarios,
-//               activeScenarioId: state.activeScenarioId
-//             };
-
-//             saveLocalStorageBackup(nextWorkspace);
-
-//             void store
-//               .set(
-//                 NATIVE_WORKSPACE_KEY,
-//                 nextWorkspace
-//               )
-//               .catch((error) => {
-//                 console.error(
-//                   'Native workspace save failed:',
-//                   error
-//                 );
-//               });
-//           }
-//         );
-//       } catch (error) {
-//         console.error(
-//           'Native store could not be initialized. Falling back to localStorage:',
-//           error
-//         );
-
-//         // This keeps browser-only development working even when
-//         // the application is not running inside Tauri.
-//         stopPersistence?.();
-
-//         stopPersistence = useProjectStore.subscribe(
-//           (state) => {
-//             saveLocalStorageBackup({
-//               scenarios: state.scenarios,
-//               activeScenarioId: state.activeScenarioId
-//             });
-//           }
-//         );
-//       }
-//     })();
-
-//     return persistencePromise;
-//   };
 let persistencePromise: Promise<void> | null = null;
 let stopPersistence: (() => void) | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
+let currentProjectId: string | null = null;
 
-export const initializeProjectPersistence =
-  (): Promise<void> => {
-    if (persistencePromise) {
-      return persistencePromise;
+export const initializeProjectPersistence = (): Promise<void> => {
+  if (persistencePromise) {
+    return persistencePromise;
+  }
+
+  persistencePromise = (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      console.error('No authenticated user found for persistence.');
+      return;
     }
 
-    persistencePromise = (async () => {
-      const currentState = useProjectStore.getState();
+    try {
+      const { data: existingProject, error: fetchError } = await supabase
+        .from('projects')
+        .select('id, data')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
 
-      let workspace: PersistedWorkspace = {
-        scenarios: currentState.scenarios,
-        activeScenarioId: currentState.activeScenarioId,
-        baseScenarioId: currentState.baseScenarioId
-      };
+      if (fetchError) throw fetchError;
 
-      try {
-        const [store, backupStore] = await Promise.all([
-          load(NATIVE_STORE_FILE, {
-            autoSave: false,
-            defaults: {}
-          }),
+      let workspace: PersistedWorkspace;
 
-          load(NATIVE_BACKUP_STORE_FILE, {
-            autoSave: false,
-            defaults: {}
+      if (existingProject && existingProject.data) {
+        currentProjectId = existingProject.id;
+        const normalized = normalizeWorkspace(existingProject.data);
+        
+        if (normalized) {
+          workspace = normalized;
+        } else {
+          workspace = {
+            scenarios: useProjectStore.getState().scenarios,
+            activeScenarioId: useProjectStore.getState().activeScenarioId,
+            baseScenarioId: useProjectStore.getState().baseScenarioId
+          };
+        }
+      } else {
+        workspace = {
+          scenarios: useProjectStore.getState().scenarios,
+          activeScenarioId: useProjectStore.getState().activeScenarioId,
+          baseScenarioId: useProjectStore.getState().baseScenarioId
+        };
+        
+        const { data: newProject, error: insertError } = await supabase
+          .from('projects')
+          .insert({
+            user_id: user.id,
+            name: 'My Workspace',
+            data: cloneWorkspace(workspace)
           })
-        ]);
-
-        const savedWorkspace = normalizeWorkspace(
-          await store.get<unknown>(
-            NATIVE_WORKSPACE_KEY
-          )
-        );
-
-        const backupWorkspace = normalizeWorkspace(
-          await backupStore.get<unknown>(
-            NATIVE_WORKSPACE_KEY
-          )
-        );
-
-        if (savedWorkspace) {
-          // The primary native store is valid.
-          workspace = savedWorkspace;
-        } else if (backupWorkspace) {
-          // The primary store is missing or invalid.
-          // Recover automatically from the backup.
-          workspace = backupWorkspace;
-
-          console.warn(
-            'Primary workspace was unavailable. ' +
-            'The backup workspace was restored.'
-          );
-        }
-
-        useProjectStore.getState().setEntireState(
-          workspace.scenarios,
-          workspace.activeScenarioId,
-          workspace.baseScenarioId
-        );
-
-        // Ensure the primary store contains valid data.
-        await store.set(
-          NATIVE_WORKSPACE_KEY,
-          cloneWorkspace(workspace)
-        );
-
-        await store.save();
-
-        // Create the initial backup only when one
-        // does not already exist.
-        if (!backupWorkspace) {
-          await backupStore.set(
-            NATIVE_WORKSPACE_KEY,
-            cloneWorkspace(workspace)
-          );
-
-          await backupStore.save();
-        }
-
-        // Keep localStorage temporarily as another
-        // migration/recovery copy.
-        saveLocalStorageBackup(workspace);
-
-        let lastSavedWorkspace =
-          cloneWorkspace(workspace);
-
-        stopPersistence?.();
-
-        stopPersistence = useProjectStore.subscribe(
-          (state) => {
-            const nextWorkspace = cloneWorkspace({
-              scenarios: state.scenarios,
-              activeScenarioId: state.activeScenarioId,
-              baseScenarioId: state.baseScenarioId
-            });
-
-            saveLocalStorageBackup(nextWorkspace);
-
-            /*
-             * Queue saves so that rapid edits cannot write
-             * the files out of order.
-             *
-             * First:
-             *   previous valid state -> backup
-             *
-             * Then:
-             *   newest state -> primary
-             */
-            saveQueue = saveQueue
-              .then(async () => {
-                await backupStore.set(
-                  NATIVE_WORKSPACE_KEY,
-                  lastSavedWorkspace
-                );
-
-                await backupStore.save();
-
-                await store.set(
-                  NATIVE_WORKSPACE_KEY,
-                  nextWorkspace
-                );
-
-                await store.save();
-
-                lastSavedWorkspace =
-                  cloneWorkspace(nextWorkspace);
-              })
-              .catch((error) => {
-                console.error(
-                  'Native workspace save failed:',
-                  error
-                );
-              });
-          }
-        );
-      } catch (error) {
-        console.error(
-          'Native stores could not be initialized. ' +
-          'Falling back to localStorage:',
-          error
-        );
-
-        stopPersistence?.();
-
-        stopPersistence = useProjectStore.subscribe(
-          (state) => {
-            saveLocalStorageBackup({
-              scenarios: state.scenarios,
-              activeScenarioId: state.activeScenarioId,
-              baseScenarioId: state.baseScenarioId
-            });
-          }
-        );
+          .select('id')
+          .single();
+          
+        if (insertError) throw insertError;
+        currentProjectId = newProject.id;
       }
-    })();
 
-    return persistencePromise;
-  };
+      useProjectStore.getState().setEntireState(
+        workspace.scenarios,
+        workspace.activeScenarioId,
+        workspace.baseScenarioId
+      );
 
-export const flushProjectPersistence =
-  async (): Promise<void> => {
-    await initializeProjectPersistence();
-    await saveQueue;
-  };
+      saveLocalStorageBackup(workspace);
+
+      stopPersistence?.();
+      
+      stopPersistence = useProjectStore.subscribe((state) => {
+        const nextWorkspace = cloneWorkspace({
+          scenarios: state.scenarios,
+          activeScenarioId: state.activeScenarioId,
+          baseScenarioId: state.baseScenarioId
+        });
+
+        saveLocalStorageBackup(nextWorkspace);
+
+        saveQueue = saveQueue
+          .then(async () => {
+            if (!currentProjectId) return;
+            
+            const { error: updateError } = await supabase
+              .from('projects')
+              .update({
+                data: nextWorkspace,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', currentProjectId);
+
+            if (updateError) {
+              console.error('Supabase workspace save failed:', updateError);
+            }
+          })
+          .catch((error) => {
+            console.error('Queue save failed:', error);
+          });
+      });
+
+    } catch (error) {
+      console.error('Supabase persistence failed. Falling back to localStorage:', error);
+      
+      stopPersistence?.();
+      stopPersistence = useProjectStore.subscribe((state) => {
+        saveLocalStorageBackup({
+          scenarios: state.scenarios,
+          activeScenarioId: state.activeScenarioId,
+          baseScenarioId: state.baseScenarioId
+        });
+      });
+    }
+  })();
+
+  return persistencePromise;
+};
+
+export const flushProjectPersistence = async (): Promise<void> => {
+  await initializeProjectPersistence();
+  await saveQueue;
+};
 
 const computeScenarioTotals = (resourcesList: Resource[]) => {
   let totalHours = 0;
@@ -1343,6 +1188,11 @@ const getInitialDarkMode = (): boolean => {
 export default function App() {
   const [isDark, setIsDark] = useState<boolean>(getInitialDarkMode);
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    void initializeProjectPersistence();
+  }, []);
+
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmation, setConfirmation] = useState<{
     title: string;
@@ -1912,7 +1762,7 @@ export default function App() {
               color: '#10b981'
             }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-              Local Storage Saved
+              Database Synced
             </div>
 
             {/* Dark Mode toggle */}
@@ -2456,10 +2306,8 @@ export default function App() {
                     const workingDays = calculateWorkingDays(r.startDate, r.endDate);
                     const calculatedTotalHrs = getResourceDirectHours(r);
                     const capacityHours = getResourceCapacityHours(r);
-                    const resourceTotalCost =
-                      calculatedTotalHrs * (r.costRate || 0);
-                    const resourceTotalBillable =
-                      calculatedTotalHrs * (r.billRate || 0);
+                    const resourceTotalCost = calculatedTotalHrs * r.costRate;
+                    const resourceTotalBillable = calculatedTotalHrs * r.billRate;
 
                     return (
                       <div key={r.id} className="hover-elevate" style={{
@@ -2586,55 +2434,42 @@ export default function App() {
                           <div style={{
                             gridColumn: windowWidth >= 720 ? 'span 2' : 'auto',
                             display: 'grid',
-                            gridTemplateColumns: isMobile
-                              ? '1fr'
-                              : 'repeat(2, minmax(0, 1fr))',
+                            gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
                             gap: '12px',
                             minWidth: 0
                           }}>
                             {[
-                              {
-                                label: 'Total Cost',
-                                value: resourceTotalCost
-                              },
-                              {
-                                label: 'Total Billable',
-                                value: resourceTotalBillable
-                              }
-                            ].map((total) => (
-                              <div
-                                key={total.label}
-                                style={{
-                                  minHeight: '58px',
-                                  padding: '10px 12px',
-                                  borderRadius: '8px',
-                                  border: `1px solid ${colors.border}`,
-                                  backgroundColor: isDark
-                                    ? 'rgba(99, 102, 241, 0.06)'
-                                    : '#f8fafc',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  justifyContent: 'center',
-                                  gap: '4px',
-                                  boxSizing: 'border-box'
-                                }}
-                              >
+                              { label: 'Total Cost', value: resourceTotalCost },
+                              { label: 'Total Billable', value: resourceTotalBillable }
+                            ].map((summary) => (
+                              <div key={summary.label} style={{
+                                minWidth: 0,
+                                padding: '12px 14px',
+                                borderRadius: '10px',
+                                border: `1px solid ${colors.border}`,
+                                backgroundColor: colors.inputBg,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'center',
+                                gap: '4px'
+                              }}>
                                 <span style={{
-                                  fontSize: '9px',
+                                  fontSize: '10px',
                                   fontWeight: 800,
                                   color: colors.textMuted,
                                   textTransform: 'uppercase',
-                                  letterSpacing: '0.07em'
+                                  letterSpacing: '0.05em'
                                 }}>
-                                  {total.label}
+                                  {summary.label}
                                 </span>
                                 <span style={{
-                                  fontSize: '14px',
-                                  fontWeight: 800,
+                                  fontSize: '18px',
+                                  lineHeight: 1.2,
+                                  fontWeight: 850,
                                   color: colors.text,
                                   overflowWrap: 'anywhere'
                                 }}>
-                                  ${total.value.toLocaleString(undefined, {
+                                  ${summary.value.toLocaleString(undefined, {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2
                                   })}
@@ -2681,9 +2516,7 @@ export default function App() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <ResourceAllocationInput
                                   value={r.utilization}
-                                  onCommit={(allocation) =>
-                                    state.updateResourceAllocation(r.id, allocation)
-                                  }
+                                  onCommit={(allocation) => state.updateResourceAllocation(r.id, allocation)}
                                   colors={colors}
                                   disabled={activeIsBase}
                                 />

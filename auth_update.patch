@@ -1,0 +1,70 @@
+--- src/supabaseClient.ts
++++ src/supabaseClient.ts
+@@ -0,0 +1,7 @@
++import { createClient } from '@supabase/supabase-js'
++
++const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
++// Using the new Publishable Key format (sb_publishable_...)
++const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
++
++export const supabase = createClient(supabaseUrl, supabasePublishableKey)
+--- src/App.tsx
++++ src/App.tsx
+@@ -1,13 +1,48 @@
+-import { useState } from 'react'
++import { useState } from 'react';
++import { supabase } from './supabaseClient';
++import { useUser } from './contexts/UserContext';
+ import './App.css'
+ 
+ function App() {
+-  const [count, setCount] = useState(0)
++  const { user, loading } = useUser();
++  const [email, setEmail] = useState('');
++  const [authLoading, setAuthLoading] = useState(false);
++
++  const handleLogin = async (e: React.FormEvent) => {
++    e.preventDefault();
++    setAuthLoading(true);
++    const { error } = await supabase.auth.signInWithOtp({ email });
++    if (error) alert(error.message);
++    else alert('Check your email for the login link!');
++    setAuthLoading(false);
++  };
++
++  if (loading) return <div>Loading...</div>;
++
++  if (!user) {
++    return (
++      <div className="login-container">
++        <h1>Margin Modeler Login</h1>
++        <form onSubmit={handleLogin}>
++          <input
++            type="email"
++            placeholder="Your email address"
++            value={email}
++            onChange={(e) => setEmail(e.target.value)}
++            required
++          />
++          <button type="submit" disabled={authLoading}>
++            {authLoading ? 'Sending...' : 'Send Magic Link'}
++          </button>
++        </form>
++      </div>
++    );
++  }
+ 
+   return (
+-    <>
+-      {/* Your existing App content here */}
+-    </>
+-  )
++    <div className="app-container">
++       {/* Your existing Margin Modeler UI components go here */}
++      <h1>Welcome to Margin Modeler, {user.email}!</h1>
++      <button onClick={() => supabase.auth.signOut()}>Sign Out</button>
++    </div>
++  );
+ }
+ 
+ export default App
