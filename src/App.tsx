@@ -1,4 +1,14 @@
 
+import ConfirmationDialog from './components/common/ConfirmationDialog';
+import Toast from './components/common/Toast';
+
+import type {
+  ConfirmationRequest
+} from './components/common/ConfirmationDialog';
+
+import type {
+  ToastMessage
+} from './components/common/Toast';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   addDays,
@@ -64,13 +74,8 @@ export default function App() {
     void initializeProjectPersistence();
   }, []);
 
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [confirmation, setConfirmation] = useState<{
-    title: string;
-    message: string;
-    confirmLabel: string;
-    onConfirm: () => void;
-  } | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const state = useProjectStore();
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -459,133 +464,23 @@ export default function App() {
 
       {/* State Notification Toast */}
       {toast && (
-        <div style={{
-          position: 'fixed',
-          top: isMobile ? '12px' : '24px',
-          right: isMobile ? '12px' : '24px',
-          left: isMobile ? '12px' : 'auto',
-          zIndex: 9999,
-          backgroundColor: toast.type === 'success' ? colors.success : colors.error,
-          color: '#ffffff',
-          padding: '12px 24px',
-          borderRadius: '12px',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
-          fontWeight: 600,
-          fontSize: '13px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          animation: 'slideIn 0.25s ease-out'
-        }}>
-          {toast.type === 'success' ? '✓' : '✕'} {toast.message}
-        </div>
-      )}
+      <Toast
+        toast={toast}
+        isMobile={isMobile}
+        successColor={colors.success}
+        errorColor={colors.error}
+      />
+    )}
 
-      {confirmation && (
-        <div
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setConfirmation(null);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            backgroundColor: 'rgba(2, 6, 23, 0.66)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px'
-          }}
-        >
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-confirmation-title"
-            aria-describedby="delete-confirmation-description"
-            style={{
-              width: '100%',
-              maxWidth: '460px',
-              backgroundColor: colors.card,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-              borderRadius: '18px',
-              padding: isMobile ? '22px' : '28px',
-              boxShadow: '0 24px 60px rgba(0, 0, 0, 0.34)'
-            }}
-          >
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.16)' : '#fee2e2',
-              color: colors.error,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '16px'
-            }}>
-              <svg aria-hidden="true" style={{ width: '22px', height: '22px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM10.29 3.86l-7.82 13.55A2 2 0 004.2 20.4h15.6a2 2 0 001.73-2.99L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-            </div>
-            <h2 id="delete-confirmation-title" style={{ margin: 0, fontSize: '20px', fontWeight: 800 }}>
-              {confirmation.title}
-            </h2>
-            <p id="delete-confirmation-description" style={{
-              margin: '10px 0 0',
-              color: colors.textMuted,
-              fontSize: '13px',
-              lineHeight: 1.65
-            }}>
-              {confirmation.message}
-            </p>
-            <div style={{
-              marginTop: '24px',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '10px',
-              flexWrap: 'wrap'
-            }}>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setConfirmation(null)}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '9px',
-                  border: `1px solid ${colors.border}`,
-                  backgroundColor: colors.card,
-                  color: colors.text,
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmation.onConfirm}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '9px',
-                  border: 'none',
-                  backgroundColor: colors.error,
-                  color: '#ffffff',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(239, 68, 68, 0.25)'
-                }}
-              >
-                {confirmation.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  {confirmation && (
+  <ConfirmationDialog
+    confirmation={confirmation}
+    colors={colors}
+    isDark={isDark}
+    isMobile={isMobile}
+    onCancel={() => setConfirmation(null)}
+  />
+)}
 
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
         
