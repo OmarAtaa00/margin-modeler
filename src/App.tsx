@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from './supabaseClient';
 import {
   addDays,
 
@@ -20,7 +19,6 @@ import {
 import { computeScenarioTotals } from './utils/scenarioCalculations';
 import { validateWorkspace } from './validation/workspaceValidation';
 import type {
-  PersistedWorkspace,
   Resource,
   Scenario
 } from './validation/workspaceValidation';
@@ -37,180 +35,14 @@ import ResourceAllocationInput from './components/resources/ResourceAllocationIn
 import ResourceHoursInput from './components/resources/ResourceHoursInput';
 import CustomDatePicker from './components/common/CustomDatePicker';
 import {
-DEFAULT_PROJECT_START,
-LOCAL_STORAGE_KEY,
-useProjectStore
+  DEFAULT_PROJECT_START,
+  useProjectStore
 } from './store/projectStore';
+import {
+  initializeProjectPersistence
+} from './services/projectPersistence';
 
 export type { Resource, Scenario } from './validation/workspaceValidation';
-
-
-
-const normalizeWorkspace = (
-  value: unknown
-): PersistedWorkspace | null => {
-  const result = validateWorkspace(value);
-  return result.ok ? result.workspace : null;
-};
-const cloneWorkspace = (
-  workspace: PersistedWorkspace
-): PersistedWorkspace => {
-  return JSON.parse(
-    JSON.stringify(workspace)
-  ) as PersistedWorkspace;
-};
-
-const saveLocalStorageBackup = (
-  workspace: PersistedWorkspace
-): void => {
-  try {
-    localStorage.setItem(
-      LOCAL_STORAGE_KEY,
-      JSON.stringify(workspace)
-    );
-  } catch (error) {
-    console.error('Local storage backup failed:', error);
-  }
-};
-
-
-let persistencePromise: Promise<void> | null = null;
-let stopPersistence: (() => void) | null = null;
-let saveQueue: Promise<void> = Promise.resolve();
-let currentProjectId: string | null = null;
-
-export const initializeProjectPersistence = (): Promise<void> => {
-  if (persistencePromise) {
-    return persistencePromise;
-  }
-
-  persistencePromise = (async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      console.error('No authenticated user found for persistence.');
-      return;
-    }
-
-    try {
-      const { data: existingProject, error: fetchError } = await supabase
-        .from('projects')
-        .select('id, data')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      let workspace: PersistedWorkspace;
-
-      if (existingProject && existingProject.data) {
-        currentProjectId = existingProject.id;
-        const normalized = normalizeWorkspace(existingProject.data);
-        
-        if (normalized) {
-          workspace = normalized;
-        } else {
-          workspace = {
-            scenarios: useProjectStore.getState().scenarios,
-            activeScenarioId: useProjectStore.getState().activeScenarioId,
-            baseScenarioId: useProjectStore.getState().baseScenarioId
-          };
-        }
-      } else {
-        workspace = {
-          scenarios: useProjectStore.getState().scenarios,
-          activeScenarioId: useProjectStore.getState().activeScenarioId,
-          baseScenarioId: useProjectStore.getState().baseScenarioId
-        };
-        
-        const { data: newProject, error: insertError } = await supabase
-          .from('projects')
-          .insert({
-            user_id: user.id,
-            name: 'My Workspace',
-            data: cloneWorkspace(workspace)
-          })
-          .select('id')
-          .single();
-          
-        if (insertError) throw insertError;
-        currentProjectId = newProject.id;
-      }
-
-      useProjectStore.getState().setEntireState(
-        workspace.scenarios,
-        workspace.activeScenarioId,
-        workspace.baseScenarioId
-      );
-
-      saveLocalStorageBackup(workspace);
-
-      stopPersistence?.();
-      
-      stopPersistence = useProjectStore.subscribe((state) => {
-        const nextWorkspace = cloneWorkspace({
-          scenarios: state.scenarios,
-          activeScenarioId: state.activeScenarioId,
-          baseScenarioId: state.baseScenarioId
-        });
-
-        saveLocalStorageBackup(nextWorkspace);
-
-        saveQueue = saveQueue
-          .then(async () => {
-            if (!currentProjectId) return;
-            
-            const { error: updateError } = await supabase
-              .from('projects')
-              .update({
-                data: nextWorkspace,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', currentProjectId);
-
-            if (updateError) {
-              console.error('Supabase workspace save failed:', updateError);
-            }
-          })
-          .catch((error) => {
-            console.error('Queue save failed:', error);
-          });
-      });
-
-    } catch (error) {
-      console.error('Supabase persistence failed. Falling back to localStorage:', error);
-      
-      stopPersistence?.();
-      stopPersistence = useProjectStore.subscribe((state) => {
-        saveLocalStorageBackup({
-          scenarios: state.scenarios,
-          activeScenarioId: state.activeScenarioId,
-          baseScenarioId: state.baseScenarioId
-        });
-      });
-    }
-  })();
-
-  return persistencePromise;
-};
-
-export const flushProjectPersistence = async (): Promise<void> => {
-  await initializeProjectPersistence();
-  await saveQueue;
-};
-
-
-
-
-
-
-
-
-
-
-
-
 
 const getInitialDarkMode = (): boolean => {
   if (typeof window === 'undefined') return false;
