@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { supabase } from './supabaseClient';
@@ -19,6 +20,7 @@ import {
   synchronizeResourceFromAllocation,
   synchronizeResourceFromHours
 } from './utils/resourceCalculations';
+import { computeScenarioTotals } from './utils/scenarioCalculations';
 import { validateWorkspace } from './validation/workspaceValidation';
 import type {
   PersistedWorkspace,
@@ -604,36 +606,7 @@ export const flushProjectPersistence = async (): Promise<void> => {
   await saveQueue;
 };
 
-const computeScenarioTotals = (resourcesList: Resource[]) => {
-  let totalHours = 0;
-  let totalCost = 0;
-  let totalRevenue = 0;
 
-  if (!resourcesList || !Array.isArray(resourcesList)) {
-    return { totalHours, totalCost, totalRevenue, margin: 0 };
-  }
-
-  resourcesList.forEach(r => {
-    try {
-      const effectiveHours = getResourceDirectHours(r);
-
-      totalHours += effectiveHours;
-      totalCost += effectiveHours * (r.costRate || 0);
-      totalRevenue += effectiveHours * (r.billRate || 0);
-    } catch (e) {
-      console.error("Calculation safeguard triggered:", e);
-    }
-  });
-
-  const margin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
-
-  return {
-    totalHours,
-    totalCost,
-    totalRevenue,
-    margin
-  };
-};
 
 const getMarginTheme = (margin: number, isDark: boolean) => {
   if (margin >= 50) {
