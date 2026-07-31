@@ -28,6 +28,16 @@ import type {
   Scenario
 } from './validation/workspaceValidation';
 
+import {
+  formatDisplayNumber,
+  formatEditableNumber,
+  roundForDisplay
+} from './utils/formatting';
+
+import {
+  getScenarioMarginTheme
+} from './utils/marginTheme';
+
 export type { Resource, Scenario } from './validation/workspaceValidation';
 
 type ProjectState = {
@@ -55,20 +65,7 @@ type ProjectState = {
   ) => void;
 };
 
-const roundForDisplay = (value: number, fractionDigits = 2): number => {
-  if (!Number.isFinite(value)) return 0;
-  const factor = 10 ** fractionDigits;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-};
 
-const formatEditableNumber = (value: number, fractionDigits = 2): string =>
-  String(roundForDisplay(value, fractionDigits));
-
-const formatDisplayNumber = (value: number, fractionDigits = 2): string =>
-  roundForDisplay(value, fractionDigits).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: fractionDigits
-  });
 
 // Default initial date set to the Monday of current context (July 13, 2026)
 const DEFAULT_PROJECT_START = "2026-07-13";
@@ -608,66 +605,9 @@ export const flushProjectPersistence = async (): Promise<void> => {
 
 
 
-const getMarginTheme = (margin: number, isDark: boolean) => {
-  if (margin >= 50) {
-    return {
-      bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
-      border: isDark ? 'rgba(16, 185, 129, 0.3)' : '#a7f3d0',
-      text: isDark ? '#34d399' : '#047857',
-      badge: isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'
-    };
-  } else if (margin >= 35) {
-    return {
-      bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#fffbeb',
-      border: isDark ? 'rgba(245, 158, 11, 0.3)' : '#fde68a',
-      text: isDark ? '#fbbf24' : '#b45309',
-      badge: isDark ? 'rgba(245, 158, 11, 0.2)' : '#fef3c7'
-    };
-  } else {
-    return {
-      bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
-      border: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca',
-      text: isDark ? '#f87171' : '#b91c1c',
-      badge: isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2'
-    };
-  }
-};
 
-const getScenarioMarginTheme = (
-  margin: number,
-  baseMargin: number | null,
-  isBaseScenario: boolean,
-  isDark: boolean
-) => {
-  if (baseMargin === null) {
-    return getMarginTheme(margin, isDark);
-  }
 
-  if (isBaseScenario) {
-    return {
-      bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
-      border: isDark ? 'rgba(96, 165, 250, 0.35)' : '#bfdbfe',
-      text: isDark ? '#93c5fd' : '#1d4ed8',
-      badge: isDark ? 'rgba(59, 130, 246, 0.2)' : '#dbeafe'
-    };
-  }
 
-  if (margin >= baseMargin) {
-    return {
-      bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5',
-      border: isDark ? 'rgba(16, 185, 129, 0.3)' : '#a7f3d0',
-      text: isDark ? '#34d399' : '#047857',
-      badge: isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'
-    };
-  }
-
-  return {
-    bg: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
-    border: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca',
-    text: isDark ? '#f87171' : '#b91c1c',
-    badge: isDark ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2'
-  };
-};
 
 interface CustomDatePickerProps {
   value: string;
