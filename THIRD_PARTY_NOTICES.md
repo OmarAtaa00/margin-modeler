@@ -14,7 +14,6 @@ Before a public release, generate and review an exact dependency and license
 inventory from:
 
 - `package-lock.json`
-- `src-tauri/Cargo.lock`
 
 The final inventory must include each distributed dependency’s:
 
@@ -29,13 +28,12 @@ Do not treat this placeholder as the completed final dependency notice.
 ## Suggested review commands
 
 Node dependency reports may be generated with a maintained license-audit tool.
-Rust dependency reports may be generated with a maintained Cargo license tool.
 
 Any tool added only for auditing should be reviewed before execution and
 should not be included as a runtime dependency unless needed by the app.
 
 ## Core projects
 
-Margin Modeler uses technologies including Tauri, Rust, React, TypeScript,
+Margin Modeler uses technologies including React, TypeScript, Supabase,
 Zustand, and Vite. Their inclusion here is an acknowledgement, not a substitute
 for the exact lockfile-derived inventory required before release.
