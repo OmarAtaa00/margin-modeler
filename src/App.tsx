@@ -14,7 +14,7 @@ import {
   parseDateOnlyUtc
 } from './utils/dates';
 import {
-  clampAllocation,
+
   getResourceCapacityHours,
   getResourceDirectHours,
   synchronizeResourceFromAllocation,
@@ -30,13 +30,14 @@ import type {
 
 import {
   formatDisplayNumber,
-  formatEditableNumber,
   roundForDisplay
 } from './utils/formatting';
 
 import {
   getScenarioMarginTheme
 } from './utils/marginTheme';
+import ResourceAllocationInput from './components/resources/ResourceAllocationInput';
+import ResourceHoursInput from './components/resources/ResourceHoursInput';
 
 export type { Resource, Scenario } from './validation/workspaceValidation';
 
@@ -947,144 +948,9 @@ const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   );
 };
 
-interface ResourceAllocationInputProps {
-  value: number;
-  onCommit: (allocation: number) => void;
-  colors: any;
-  disabled?: boolean;
-}
 
-const ResourceAllocationInput: React.FC<ResourceAllocationInputProps> = ({
-  value,
-  onCommit,
-  colors,
-  disabled = false
-}) => {
-  const formattedValue = formatEditableNumber(value);
-  const [draft, setDraft] = useState(formattedValue);
 
-  useEffect(() => {
-    setDraft(formattedValue);
-  }, [formattedValue]);
 
-  const commit = () => {
-    const parsed = Number(draft);
-    if (Number.isFinite(parsed)) {
-      onCommit(clampAllocation(parsed));
-    } else {
-      setDraft(formattedValue);
-    }
-  };
-
-  return (
-    <input
-      type="number"
-      min="0"
-      max="100"
-      step="0.01"
-      inputMode="decimal"
-      value={draft}
-      disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') event.currentTarget.blur();
-        if (event.key === 'Escape') {
-          setDraft(formattedValue);
-          event.currentTarget.blur();
-        }
-      }}
-      className="compact-number-input"
-      style={{
-        width: '64px',
-        height: '38px',
-        padding: '0 7px',
-        margin: 0,
-        textAlign: 'center',
-        fontSize: '12px',
-        fontWeight: 700,
-        lineHeight: 1,
-        borderRadius: '9px',
-        border: `1px solid ${colors.border}`,
-        backgroundColor: colors.inputBg,
-        color: colors.text,
-        cursor: disabled ? 'not-allowed' : 'text',
-        opacity: disabled ? 0.68 : 1,
-        outline: 'none',
-        boxShadow: 'none'
-      }}
-      aria-label="Allocation percentage input"
-    />
-  );
-};
-
-interface ResourceHoursInputProps {
-  value: number;
-  onCommit: (hours: number) => void;
-  colors: any;
-  max: number;
-  disabled?: boolean;
-}
-
-const ResourceHoursInput: React.FC<ResourceHoursInputProps> = ({ value, onCommit, colors, max, disabled = false }) => {
-  const formattedValue = formatEditableNumber(value);
-  const [draft, setDraft] = useState(formattedValue);
-
-  useEffect(() => {
-    setDraft(formattedValue);
-  }, [formattedValue]);
-
-  const commit = () => {
-    const parsed = Number(draft);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      onCommit(parsed);
-    } else {
-      setDraft(formattedValue);
-    }
-  };
-
-  return (
-    <input
-      type="number"
-      min="0"
-      max={max}
-      step="0.01"
-      inputMode="decimal"
-      value={draft}
-      disabled={disabled}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape') {
-          setDraft(formattedValue);
-          e.currentTarget.blur();
-        }
-      }}
-      className="compact-number-input"
-      style={{
-        width: '86px',
-        height: '38px',
-        padding: '0 10px',
-        textAlign: 'right',
-        fontSize: '12px',
-        fontWeight: 700,
-        lineHeight: 1,
-        borderRadius: '9px',
-        border: `1px solid ${colors.border}`,
-        backgroundColor: colors.inputBg,
-        color: colors.text,
-        cursor: disabled ? 'not-allowed' : 'text',
-        opacity: disabled ? 0.68 : 1,
-        outline: 'none',
-        boxShadow: 'none',
-        margin: 0
-      }}
-      aria-label="Direct hours input"
-      placeholder="Hours"
-    />
-  );
-};
 
 const getInitialDarkMode = (): boolean => {
   if (typeof window === 'undefined') return false;
