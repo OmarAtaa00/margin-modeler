@@ -1,160 +1,60 @@
 # Margin Modeler
 
-Margin Modeler is a desktop application for planning project scenarios, assigning resources, modeling cost and bill rates, calculating direct hours, and reviewing project margin outcomes.
+Margin Modeler is a browser-based application for planning project scenarios, assigning resources, modeling cost and bill rates, calculating direct hours, and comparing project margin outcomes.
 
-> **Alpha software**
->
-> Margin Modeler is currently under active development. The current release line is `0.2.0-alpha.1`. Alpha builds are intended for testing and evaluation and may contain defects or incomplete features. Keep independent backups of important workspace exports.
+## Current status
+
+Margin Modeler is under active alpha development. Features, interfaces, calculations, and data structures may change.
+
+Users should export important workspaces regularly and keep independent backup copies.
 
 ## Current capabilities
 
-- Create and manage project scenarios
-- Add and edit resource assignments
+- Create, rename, clone, compare, and delete project scenarios
+- Select and lock a scenario as the base comparison
+- Add, edit, clone, and remove resource assignments
 - Configure project and resource dates
 - Set cost rates, bill rates, allocation, and direct hours
-- Calculate project hours, cost, billable value, and margin
-- Store workspace data locally using the Tauri Store plugin
-- Maintain a local primary store and backup store
-- Migrate older browser-based local storage
-- Export and import workspace JSON
-- Build native installers for macOS and Windows through GitHub Actions
+- Calculate working days, capacity hours, cost, revenue, and margin
+- Compare scenario margins against a selected base project
+- Visualize assignments on a 12-week timeline
+- Import and export workspace data as JSON
+- Authenticate users through Supabase
+- Store authenticated workspace data in Supabase
+- Maintain a browser local-storage recovery copy
+- Use responsive light and dark interfaces
 
 ## Technology
 
-- Tauri 2
 - React
 - TypeScript
 - Zustand
 - Vite
-- Rust
+- Supabase
 
-## Data and privacy
+## Application architecture
 
-Margin Modeler is designed as a local desktop application. Project workspace data is stored on the user’s device. The application does not require an account or a remote application backend.
+The React application is loaded from `src/main.tsx`.
 
-See [PRIVACY.md](PRIVACY.md) for details.
+The main application is wrapped by:
 
-## Alpha release status
+1. `UserProvider`, which manages the Supabase authentication session
+2. `AuthGate`, which displays authentication controls when no session exists
+3. `App`, which provides project modeling, calculations, persistence, import, export, and user-interface functionality
 
-The current alpha release is:
+Project state is managed with Zustand.
 
-```text
-0.2.0-alpha.1
-```
+Authenticated workspace data is stored in the Supabase `projects` table. The application also maintains a browser local-storage copy as a recovery fallback.
 
-Alpha releases should be published as GitHub **prereleases** and should not be presented as production-stable builds.
+## Requirements
 
-Windows binaries must not be described as signed until Authenticode signing has been configured and independently verified.
+Use a currently supported Node.js release compatible with the installed Vite and Supabase packages.
 
-The `0.2.0-alpha.1` workflow creates a **draft prerelease** for review. Its Windows installer is still unsigned until a verified Authenticode provider and protected signing credentials are configured.
+Node.js 22.12 or newer is recommended for the current dependency set.
 
-## Installation
+## Local development
 
-### macOS
-
-Download the correct DMG for the Mac architecture:
-
-- Apple Silicon for M1, M2, M3, M4, and later Apple Silicon systems
-- Intel for Intel-based Macs
-
-macOS code signing and notarization should be configured before broad public distribution.
-
-### Windows
-
-Download the Windows NSIS setup executable from the matching GitHub release.
-
-Until Windows Authenticode signing is configured, Windows may display an unknown-publisher warning and managed endpoint-security software may apply additional inspection. Do not disable endpoint protection to install the application.
-
-See [WINDOWS_SIGNING.md](WINDOWS_SIGNING.md).
-
-## Development
-
-### Requirements
-
-- Node.js
-- npm
-- Rust toolchain
-- Tauri platform prerequisites
-
-Install dependencies:
+Install the committed dependencies:
 
 ```bash
 npm ci
-```
-
-Run the web frontend:
-
-```bash
-npm run dev
-```
-
-Run the Tauri desktop application:
-
-```bash
-npm run tauri dev
-```
-
-Create a production build:
-
-```bash
-npm run build
-npm run tauri build
-```
-
-## Release integrity
-
-Each alpha build publishes platform-specific SHA-256 checksum files. Public-repository builds also receive GitHub artifact provenance attestations when supported by the repository plan. These controls help verify which workflow produced an artifact, but they do not replace Windows Authenticode signing or macOS Developer ID signing and notarization.
-
-Example checksum verification on Windows:
-
-```powershell
-Get-FileHash ".\Margin Modeler_0.2.0-alpha.1_x64-setup.exe" -Algorithm SHA256
-```
-
-Example verification on macOS:
-
-```bash
-shasum -a 256 "Margin Modeler_0.2.0-alpha.1_aarch64.dmg"
-```
-
-## Application data
-
-The Tauri application identifier is:
-
-```text
-com.omarataaallah.margin-modeler
-```
-
-Do not change this identifier without a deliberate data-migration plan. It determines the platform-specific application-data directory, and changing it can make existing data appear missing.
-
-The native persistence files are:
-
-```text
-margin-modeler-store.json
-margin-modeler-store.backup.json
-```
-
-Users should periodically export important workspaces as an additional independent backup.
-
-## Security
-
-Please read [SECURITY.md](SECURITY.md) before reporting a security issue.
-
-Security-sensitive release requirements are documented in:
-
-- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
-- [WINDOWS_SIGNING.md](WINDOWS_SIGNING.md)
-
-## License
-
-Copyright © 2026 Omar AtaaAllah. All rights reserved.
-
-This project is currently proprietary and is **not** licensed under MIT or another open-source license. See [LICENSE.txt](LICENSE.txt).
-
-Third-party dependencies remain subject to their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Credits
-
-Created and maintained by **Omar AtaaAllah**.
-
-See [CREDITS.md](CREDITS.md).
