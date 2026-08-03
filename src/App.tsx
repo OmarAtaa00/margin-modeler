@@ -6,6 +6,7 @@ import AppHeader from './components/layout/AppHeader';
 import EmptyWorkspace from './components/projects/EmptyWorkspace';
 import ActiveProjectSummary from './components/projects/ActiveProjectSummary';
 import ProjectMetrics from './components/projects/ProjectMetrics';
+import ResourceList from './components/resources/ResourceList';
 import type {
   ConfirmationRequest
 } from './components/common/ConfirmationDialog';
@@ -16,20 +17,11 @@ import type {
 import React, { useState, useEffect, useRef } from 'react';
 import {
   addDays,
-
-  calculateWorkingDays,
   compareDateOnly,
   dateOnlyToUtcMs,
-
   formatDateOnlyUtc,
-
   parseDateOnlyUtc
 } from './utils/dates';
-import {
-
-  getResourceCapacityHours,
-  getResourceDirectHours,
-} from './utils/resourceCalculations';
 import { computeScenarioTotals } from './utils/scenarioCalculations';
 import { validateWorkspace } from './validation/workspaceValidation';
 import type {
@@ -37,17 +29,11 @@ import type {
   Scenario
 } from './validation/workspaceValidation';
 
-import {
-  formatDisplayNumber,
-  roundForDisplay
-} from './utils/formatting';
+import { formatDisplayNumber } from './utils/formatting';
 
 import {
   getScenarioMarginTheme
 } from './utils/marginTheme';
-import ResourceAllocationInput from './components/resources/ResourceAllocationInput';
-import ResourceHoursInput from './components/resources/ResourceHoursInput';
-import CustomDatePicker from './components/common/CustomDatePicker';
 import {
   DEFAULT_PROJECT_START,
   useProjectStore
@@ -565,377 +551,31 @@ export default function App() {
                 isMobile={isMobile}
                 colors={colors}
               />
+              <ResourceList
+                resources={activeScenario.resources}
+                isBaseLocked={activeIsBase}
+                isDark={isDark}
+                isMobile={isMobile}
+                isWideLayout={windowWidth >= 720}
+                colors={colors}
+                onAddResource={() => {
+                  state.addResource();
+                  triggerToast('New resource assignment added!');
+                }}
+                onUpdateField={state.updateResourceField}
+                onUpdateAllocation={state.updateResourceAllocation}
+                onUpdateDirectHours={state.updateResourceTotalHoursDirect}
+                onCloneResource={(resource) => {
+                  state.cloneResource(resource.id);
+                  triggerToast(
+                    `${resource.name || 'Resource'} cloned above the original.`
+                  );
+                }}
+                onRequestDelete={requestResourceDeletion}
+              />
 
-              {/* Resources list container */}
-              <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>Resources & Assignments</h2>
-                  <button
-                    disabled={activeIsBase}
-                    onClick={() => {
-                      state.addResource();
-                      triggerToast("New resource assignment added!");
-                    }}
-                    style={{
-                      backgroundColor: colors.primary,
-                      color: '#fff',
-                      border: 'none',
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      cursor: activeIsBase ? 'not-allowed' : 'pointer',
-                      opacity: activeIsBase ? 0.55 : 1,
-                      boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <span style={{ fontSize: '16px', fontWeight: 'bold' }}>+</span> Add Resource
-                  </button>
-                </div>
+              {/* Dynamic Gantt Timeline visualization */}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {!activeScenario || activeScenario.resources.length === 0 ? (
-                    <div style={{
-                      padding: '40px',
-                      textAlign: 'center',
-                      border: `2px dashed ${colors.border}`,
-                      borderRadius: '16px',
-                      color: colors.textMuted
-                    }}>
-                      No active assignments in this scenario. Click Add Resource to begin planning.
-                    </div>
-                  ) : (
-                    activeScenario.resources.map(r => {
-                      const workingDays = calculateWorkingDays(r.startDate, r.endDate);
-                      const calculatedTotalHrs = getResourceDirectHours(r);
-                      const capacityHours = getResourceCapacityHours(r);
-                      const resourceTotalCost = calculatedTotalHrs * r.costRate;
-                      const resourceTotalBillable = calculatedTotalHrs * r.billRate;
-
-                      return (
-                        <div key={r.id} className="hover-elevate" style={{
-                          backgroundColor: colors.card,
-                          borderRadius: '16px',
-                          border: `1px solid ${colors.border}`,
-                          padding: '24px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '20px'
-                        }}>
-
-                          {/* Assignment Details */}
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                            gap: '12px',
-                            alignItems: 'end'
-                          }}>
-                            <div style={{ gridColumn: windowWidth >= 720 ? 'span 2' : 'auto', minWidth: 0 }}>
-                              <label style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resource Name / Role</label>
-                              <input
-                                type="text"
-                                value={r.name}
-                                disabled={activeIsBase}
-                                onChange={(e) => state.updateResourceField(r.id, 'name', e.target.value)}
-                                onBlur={(e) => state.updateResourceField(r.id, 'name', e.currentTarget.value.trim() || 'Consultant')}
-                                placeholder="e.g. Senior Architect"
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 12px',
-                                  borderRadius: '8px',
-                                  border: `1px solid ${colors.border}`,
-                                  backgroundColor: colors.inputBg,
-                                  color: colors.text,
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  boxSizing: 'border-box',
-                                  marginTop: '4px',
-                                  cursor: activeIsBase ? 'not-allowed' : 'text',
-                                  opacity: activeIsBase ? 0.68 : 1
-                                }}
-                              />
-                            </div>
-
-                            <div>
-                              <label style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cost Rate ($/hr)</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="10000"
-                                value={r.costRate === 0 ? '' : r.costRate}
-                                disabled={activeIsBase}
-                                onChange={(e) => state.updateResourceField(r.id, 'costRate', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 12px',
-                                  borderRadius: '8px',
-                                  border: `1px solid ${colors.border}`,
-                                  backgroundColor: colors.inputBg,
-                                  color: colors.text,
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  boxSizing: 'border-box',
-                                  marginTop: '4px',
-                                  cursor: activeIsBase ? 'not-allowed' : 'text',
-                                  opacity: activeIsBase ? 0.68 : 1
-                                }}
-                                placeholder="0"
-                              />
-                            </div>
-
-                            <div>
-                              <label style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bill Rate ($/hr)</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="10000"
-                                value={r.billRate === 0 ? '' : r.billRate}
-                                disabled={activeIsBase}
-                                onChange={(e) => state.updateResourceField(r.id, 'billRate', e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 12px',
-                                  borderRadius: '8px',
-                                  border: `1px solid ${colors.border}`,
-                                  backgroundColor: colors.inputBg,
-                                  color: colors.text,
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  boxSizing: 'border-box',
-                                  marginTop: '4px',
-                                  cursor: activeIsBase ? 'not-allowed' : 'text',
-                                  opacity: activeIsBase ? 0.68 : 1
-                                }}
-                                placeholder="0"
-                              />
-                            </div>
-
-                            {/* Upgraded DatePickers */}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <label style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Start Date</label>
-                              <CustomDatePicker
-                                value={r.startDate}
-                                onChange={(date) => state.updateResourceField(r.id, 'startDate', date)}
-                                isDark={isDark}
-                                colors={colors}
-                                disabled={activeIsBase}
-                              />
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <label style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>End Date</label>
-                              <CustomDatePicker
-                                value={r.endDate}
-                                onChange={(date) => state.updateResourceField(r.id, 'endDate', date)}
-                                isDark={isDark}
-                                colors={colors}
-                                align="right"
-                                disabled={activeIsBase}
-                              />
-                            </div>
-
-                            <div style={{
-                              gridColumn: windowWidth >= 720 ? 'span 2' : 'auto',
-                              display: 'grid',
-                              gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                              gap: '12px',
-                              minWidth: 0
-                            }}>
-                              {[
-                                { label: 'Total Cost', value: resourceTotalCost },
-                                { label: 'Total Billable', value: resourceTotalBillable }
-                              ].map((summary) => (
-                                <div key={summary.label} style={{
-                                  minWidth: 0,
-                                  padding: '12px 14px',
-                                  borderRadius: '10px',
-                                  border: `1px solid ${colors.border}`,
-                                  backgroundColor: colors.inputBg,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  justifyContent: 'center',
-                                  gap: '4px'
-                                }}>
-                                  <span style={{
-                                    fontSize: '10px',
-                                    fontWeight: 800,
-                                    color: colors.textMuted,
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em'
-                                  }}>
-                                    {summary.label}
-                                  </span>
-                                  <span style={{
-                                    fontSize: '18px',
-                                    lineHeight: 1.2,
-                                    fontWeight: 850,
-                                    color: colors.text,
-                                    overflowWrap: 'anywhere'
-                                  }}>
-                                    ${summary.value.toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Interactive Allocation Slider and reverse math feedback */}
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-end',
-                            flexWrap: 'wrap',
-                            gap: '16px'
-                          }}>
-                            <div style={{ flex: 1, minWidth: '240px' }}>
-                              <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '10px', fontWeight: 800, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Allocation Rate</span>
-                                  <span style={{ fontSize: '10px', fontWeight: 700, color: colors.accent, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#e0e7ff', padding: '2px 6px', borderRadius: '4px' }}>
-                                    {workingDays} weekdays · {formatDisplayNumber(capacityHours, 0)} available hrs
-                                  </span>
-                                </div>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{formatDisplayNumber(calculatedTotalHrs)} hrs</span>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="100"
-                                  step="0.01"
-                                  value={roundForDisplay(r.utilization)}
-                                  disabled={activeIsBase}
-                                  onChange={(e) => state.updateResourceAllocation(r.id, Number(e.target.value))}
-                                  style={{
-                                    flex: 1,
-                                    cursor: activeIsBase ? 'not-allowed' : 'pointer',
-                                    opacity: activeIsBase ? 0.62 : 1
-                                  }}
-                                />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <ResourceAllocationInput
-                                    value={r.utilization}
-                                    onCommit={(allocation) => state.updateResourceAllocation(r.id, allocation)}
-                                    colors={colors}
-                                    disabled={activeIsBase}
-                                  />
-                                  <span style={{ fontSize: '11px', color: colors.textMuted, fontWeight: 700 }}>%</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'flex-end',
-                              gap: '8px',
-                              justifyContent: isMobile ? 'space-between' : 'flex-end',
-                              minWidth: isMobile ? 0 : '168px',
-                              width: isMobile ? '100%' : 'auto'
-                            }}>
-                              <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-start',
-                                gap: '5px'
-                              }}>
-                                <span style={{
-                                  fontSize: '9px',
-                                  lineHeight: 1,
-                                  fontWeight: 800,
-                                  color: colors.textMuted,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.07em'
-                                }}>
-                                  Direct hours
-                                </span>
-                                <ResourceHoursInput
-                                  value={calculatedTotalHrs}
-                                  onCommit={(hours) => state.updateResourceTotalHoursDirect(r.id, hours)}
-                                  colors={colors}
-                                  max={capacityHours}
-                                  disabled={activeIsBase}
-                                />
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  state.cloneResource(r.id);
-                                  triggerToast(`${r.name || 'Resource'} cloned above the original.`);
-                                }}
-                                disabled={activeIsBase}
-                                aria-label={`Clone ${r.name}`}
-                                title={activeIsBase ? 'The base project is locked' : `Clone ${r.name} above this assignment`}
-                                style={{
-                                  width: '38px',
-                                  height: '38px',
-                                  padding: 0,
-                                  margin: 0,
-                                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.09)' : '#eff6ff',
-                                  color: colors.primary,
-                                  border: `1px solid ${isDark ? 'rgba(96, 165, 250, 0.28)' : '#bfdbfe'}`,
-                                  borderRadius: '9px',
-                                  boxShadow: 'none',
-                                  cursor: activeIsBase ? 'not-allowed' : 'pointer',
-                                  opacity: activeIsBase ? 0.46 : 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                                }}
-                              >
-                                <svg style={{ width: '17px', height: '17px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 8h10a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2zm-2 8H5a2 2 0 01-2-2V5a2 2 0 012-2h8a2 2 0 012 2v1" />
-                                </svg>
-                              </button>
-
-                              <button
-                                type="button"
-                                className="resource-delete-button"
-                                onClick={() => requestResourceDeletion(r)}
-                                disabled={activeIsBase}
-                                aria-label={activeIsBase ? `${r.name} is locked` : `Delete ${r.name}`}
-                                title={activeIsBase ? 'The base project is locked' : `Delete ${r.name}`}
-                                style={{
-                                  width: '38px',
-                                  height: '38px',
-                                  padding: 0,
-                                  margin: 0,
-                                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : '#fff7f7',
-                                  color: colors.error,
-                                  border: `1px solid ${isDark ? 'rgba(248, 113, 113, 0.24)' : '#fecaca'}`,
-                                  borderRadius: '9px',
-                                  boxShadow: 'none',
-                                  WebkitAppearance: 'none',
-                                  appearance: 'none',
-                                  cursor: activeIsBase ? 'not-allowed' : 'pointer',
-                                  opacity: activeIsBase ? 0.46 : 1,
-                                  transition: 'background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                                }}
-                              >
-                                <svg style={{ width: '17px', height: '17px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </section>
 
               {/* Dynamic Gantt Timeline visualization */}
               <section style={{
