@@ -2,6 +2,7 @@
 import ConfirmationDialog from './components/common/ConfirmationDialog';
 import Toast from './components/common/Toast';
 import ProjectNavigation from './components/projects/ProjectNavigation';
+import AppHeader from './components/layout/AppHeader';
 import type {
   ConfirmationRequest
 } from './components/common/ConfirmationDialog';
@@ -483,72 +484,12 @@ export default function App() {
 
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
         
-        {/* Header Bar */}
-        <header style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '32px',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{
-                padding: '8px',
-                borderRadius: '8px',
-                backgroundColor: colors.primary,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
-              }}>
-                <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-              </span>
-              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '-0.025em' }}>Margin Modeler</h1>
-            </div>
-            <p style={{ color: colors.textMuted, fontSize: '13px', margin: '4px 0 0' }}>Simulate resource allocations, schedules, and pricing on a local system database.</p>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: isMobile ? 'flex-start' : 'flex-end' }}>
-            {/* Real-time local status indicator */}
-            <div style={{
-              padding: '6px 14px',
-              borderRadius: '20px',
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f1f5f9',
-              border: `1px solid ${colors.border}`,
-              fontSize: '11px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              color: '#10b981'
-            }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-              Database Synced
-            </div>
-
-            {/* Dark Mode toggle */}
-            <button 
-              onClick={() => setIsDark(!isDark)}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '10px',
-                border: `1px solid ${colors.border}`,
-                backgroundColor: colors.card,
-                color: colors.text,
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {isDark ? '☀️ Light' : '🌙 Dark'}
-            </button>
-          </div>
-        </header>
+    <AppHeader
+  isDark={isDark}
+  isMobile={isMobile}
+  colors={colors}
+  onToggleTheme={() => setIsDark((current) => !current)}
+/>
 
       <ProjectNavigation
   scenarios={state.scenarios}
