@@ -4,6 +4,8 @@ import Toast from './components/common/Toast';
 import ProjectNavigation from './components/projects/ProjectNavigation';
 import AppHeader from './components/layout/AppHeader';
 import EmptyWorkspace from './components/projects/EmptyWorkspace';
+import ActiveProjectSummary from './components/projects/ActiveProjectSummary';
+import ProjectMetrics from './components/projects/ProjectMetrics';
 import type {
   ConfirmationRequest
 } from './components/common/ConfirmationDialog';
@@ -530,232 +532,39 @@ export default function App() {
 
             {/* Left Panel: Resource Cards and Gantt Visualizer */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', minWidth: 0 }}>
+              <ActiveProjectSummary
+                scenario={activeScenario}
+                totals={activeTotals}
+                baseTotals={baseTotals ?? null}
+                marginDelta={activeMarginDelta ?? null}
+                marginTheme={activeMarginTheme}
+                isBase={activeIsBase}
+                isDark={isDark}
+                isMobile={isMobile}
+                colors={colors}
+                onChangeName={state.updateScenarioName}
+                onChangeProjectStartDate={(date) => {
+                  state.updateProjectStartDate(date);
+                  triggerToast('Timeline base shifted successfully!');
+                }}
+                onToggleBase={() => {
+                  state.setBaseScenario(
+                    activeIsBase ? null : activeScenario.id
+                  );
 
-              {/* Active scenario metadata base */}
-              <div style={{
-                backgroundColor: colors.card,
-                borderRadius: '14px',
-                border: `1px solid ${colors.border}`,
-                padding: isMobile ? '16px' : '20px',
-                boxShadow: isDark ? 'none' : '0 2px 10px rgba(15, 23, 42, 0.035)',
-                position: 'relative'
-              }}>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: isMobile ? '16px' : '24px'
-                }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      marginBottom: '7px',
-                      flexWrap: 'wrap'
-                    }}>
-                      <span style={{
-                        color: colors.textMuted,
-                        fontSize: '9px',
-                        fontWeight: 800,
-                        letterSpacing: '0.09em',
-                        textTransform: 'uppercase'
-                      }}>
-                        Active project
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          state.setBaseScenario(activeIsBase ? null : activeScenario.id);
-                          triggerToast(
-                            activeIsBase
-                              ? 'Base comparison removed. The project is editable again.'
-                              : `${activeScenario.name} is now the locked base project.`
-                          );
-                        }}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          minHeight: '32px',
-                          padding: '5px 10px 5px 6px',
-                          borderRadius: '999px',
-                          border: `1px solid ${activeIsBase ? activeMarginTheme.border : colors.border}`,
-                          backgroundColor: activeIsBase ? activeMarginTheme.bg : colors.inputBg,
-                          color: activeIsBase ? activeMarginTheme.text : colors.textMuted,
-                          fontSize: '10px',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          boxShadow: 'none',
-                          margin: 0
-                        }}
-                        aria-pressed={activeIsBase}
-                        title={activeIsBase ? 'Remove Base status and unlock this project' : 'Use this project as the margin comparison base'}
-                      >
-                        <span style={{
-                          width: '28px',
-                          height: '18px',
-                          padding: '2px',
-                          borderRadius: '999px',
-                          backgroundColor: activeIsBase ? colors.primary : colors.border,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: activeIsBase ? 'flex-end' : 'flex-start',
-                          boxSizing: 'border-box',
-                          transition: 'all 0.18s ease'
-                        }}>
-                          <span style={{
-                            width: '14px',
-                            height: '14px',
-                            borderRadius: '50%',
-                            backgroundColor: '#ffffff',
-                            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.28)'
-                          }} />
-                        </span>
-                        {activeIsBase ? 'Base locked' : state.baseScenarioId ? 'Make new base' : 'Set as base'}
-                      </button>
-                    </div>
-                    <input
-                      className="project-name-input"
-                      type="text"
-                      value={activeScenario ? activeScenario.name : ''}
-                      disabled={activeIsBase}
-                      onChange={(e) => state.updateScenarioName(e.target.value)}
-                      style={{
-                        display: 'block',
-                        width: 'min(100%, 560px)',
-                        height: 'auto',
-                        minHeight: 0,
-                        padding: '1px 0 5px',
-                        margin: 0,
-                        fontSize: isMobile ? '18px' : '20px',
-                        fontWeight: 800,
-                        lineHeight: 1.25,
-                        letterSpacing: '-0.02em',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderBottom: '1px solid transparent',
-                        borderRadius: 0,
-                        boxShadow: 'none',
-                        WebkitAppearance: 'none',
-                        appearance: 'none',
-                        color: colors.text,
-                        cursor: activeIsBase ? 'not-allowed' : 'text',
-                        opacity: activeIsBase ? 0.72 : 1,
-                        outline: 'none'
-                      }}
-                      onFocus={(e) => {
-                        if (!activeIsBase) e.currentTarget.style.borderBottomColor = colors.primary;
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderBottomColor = 'transparent';
-                        state.updateScenarioName(e.currentTarget.value.trim() || 'Unnamed Scenario');
-                      }}
-                    />
+                  triggerToast(
+                    activeIsBase
+                      ? 'Base comparison removed. The project is editable again.'
+                      : `${activeScenario.name} is now the locked base project.`
+                  );
+                }}
+              />
 
-                    {/* Calendar Integration */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      marginTop: '14px',
-                      flexWrap: 'wrap'
-                    }}>
-                      <span style={{ fontSize: '10px', color: colors.textMuted, fontWeight: 700 }}>Timeline starts</span>
-                      <div style={{ width: isMobile ? '100%' : '164px', maxWidth: '100%' }}>
-                        <CustomDatePicker
-                          value={activeScenario ? activeScenario.projectStartDate : DEFAULT_PROJECT_START}
-                          onChange={(date) => {
-                            state.updateProjectStartDate(date);
-                            triggerToast("Timeline base shifted successfully!");
-                          }}
-                          isDark={isDark}
-                          colors={colors}
-                          disabled={activeIsBase}
-                        />
-                      </div>
-                    </div>
-
-                    {activeIsBase && (
-                      <div style={{
-                        marginTop: '12px',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        border: `1px solid ${activeMarginTheme.border}`,
-                        backgroundColor: activeMarginTheme.bg,
-                        color: activeMarginTheme.text,
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        lineHeight: 1.45
-                      }}>
-                        🔒 This base project is read-only. Use Clone Active to create an editable comparison.
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{
-                    width: isMobile ? '100%' : '168px',
-                    minHeight: '88px',
-                    padding: '14px 16px',
-                    borderRadius: '12px',
-                    textAlign: isMobile ? 'left' : 'center',
-                    backgroundColor: activeMarginTheme.bg,
-                    border: `1px solid ${activeMarginTheme.border}`,
-                    color: activeMarginTheme.text,
-                    display: 'flex',
-                    flexDirection: isMobile ? 'row' : 'column',
-                    alignItems: 'center',
-                    justifyContent: isMobile ? 'space-between' : 'center',
-                    gap: isMobile ? '12px' : '2px'
-                  }}>
-                    <span style={{
-                      fontSize: '9px',
-                      fontWeight: 850,
-                      lineHeight: 1.3,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      opacity: 0.82
-                    }}>
-                      {activeIsBase ? 'Base margin' : baseTotals ? 'Compared margin' : 'Scenario margin'}
-                    </span>
-                    <div style={{ fontSize: '26px', lineHeight: 1, fontWeight: 900, letterSpacing: '-0.03em' }}>
-                      {activeTotals.margin.toFixed(1)}%
-                    </div>
-                    {baseTotals && (
-                      <span style={{ fontSize: '9px', fontWeight: 800, marginTop: '5px', opacity: 0.86 }}>
-                        {activeIsBase
-                          ? 'Comparison reference'
-                          : `${activeMarginDelta !== null && activeMarginDelta >= 0 ? '+' : ''}${activeMarginDelta?.toFixed(1)} pts vs ${baseTotals.margin.toFixed(1)}%`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Metric Row */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                gap: '16px'
-              }}>
-                {[
-                  { label: 'Effective Work Hours', value: `${formatDisplayNumber(activeTotals.totalHours)} hrs` },
-                  { label: 'Calculated Cost', value: `$${activeTotals.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-                  { label: 'Expected Revenue', value: `$${activeTotals.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
-                ].map((stat, i) => (
-                  <div key={i} style={{
-                    backgroundColor: colors.card,
-                    borderRadius: '16px',
-                    border: `1px solid ${colors.border}`,
-                    padding: '20px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.01)'
-                  }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: colors.textMuted, letterSpacing: '0.05em' }}>{stat.label}</span>
-                    <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '4px' }}>{stat.value}</div>
-                  </div>
-                ))}
-              </div>
+              <ProjectMetrics
+                totals={activeTotals}
+                isMobile={isMobile}
+                colors={colors}
+              />
 
               {/* Resources list container */}
               <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
