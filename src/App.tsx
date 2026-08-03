@@ -7,6 +7,7 @@ import EmptyWorkspace from './components/projects/EmptyWorkspace';
 import ActiveProjectSummary from './components/projects/ActiveProjectSummary';
 import ProjectMetrics from './components/projects/ProjectMetrics';
 import ResourceList from './components/resources/ResourceList';
+import GanttTimeline from './components/timeline/GanttTimeline';
 import type {
   ConfirmationRequest
 } from './components/common/ConfirmationDialog';
@@ -14,14 +15,8 @@ import type {
 import type {
   ToastMessage
 } from './components/common/Toast';
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  addDays,
-  compareDateOnly,
-  dateOnlyToUtcMs,
-  formatDateOnlyUtc,
-  parseDateOnlyUtc
-} from './utils/dates';
+import React, { useState, useEffect, } from 'react';
+
 import { computeScenarioTotals } from './utils/scenarioCalculations';
 import { validateWorkspace } from './validation/workspaceValidation';
 import type {
@@ -29,13 +24,10 @@ import type {
   Scenario
 } from './validation/workspaceValidation';
 
-import { formatDisplayNumber } from './utils/formatting';
-
 import {
   getScenarioMarginTheme
 } from './utils/marginTheme';
 import {
-  DEFAULT_PROJECT_START,
   useProjectStore
 } from './store/projectStore';
 import {
@@ -68,15 +60,7 @@ export default function App() {
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const state = useProjectStore();
 
-  const timelineRef = useRef<HTMLDivElement>(null);
 
-  const [dragState, setDragState] = useState<{
-    resId: string;
-    type: 'shift' | 'resize-start' | 'resize-end';
-    startX: number;
-    initialStart: string;
-    initialEnd: string;
-  } | null>(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -219,65 +203,7 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (!dragState) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!timelineRef.current) return;
-      if (state.baseScenarioId === state.activeScenarioId) return;
-      const timelineWidth = timelineRef.current.getBoundingClientRect().width;
-      const pxPerDay = (timelineWidth / 12) / 7;
-      const deltaX = e.clientX - dragState.startX;
-      const deltaDays = Math.round(deltaX / pxPerDay);
-
-      if (deltaDays === 0) return;
-
-      let newStart = dragState.initialStart;
-      let newEnd = dragState.initialEnd;
-
-      if (dragState.type === 'shift') {
-        newStart = addDays(dragState.initialStart, deltaDays, dragState.initialStart);
-        newEnd = addDays(dragState.initialEnd, deltaDays, dragState.initialEnd);
-      } else if (dragState.type === 'resize-start') {
-        const proposedStart = addDays(
-          dragState.initialStart,
-          deltaDays,
-          dragState.initialStart
-        );
-        const comparison = compareDateOnly(proposedStart, newEnd);
-        if (comparison !== null && comparison <= 0) {
-          newStart = proposedStart;
-        }
-      } else if (dragState.type === 'resize-end') {
-        const proposedEnd = addDays(
-          dragState.initialEnd,
-          deltaDays,
-          dragState.initialEnd
-        );
-        const comparison = compareDateOnly(proposedEnd, newStart);
-        if (comparison !== null && comparison >= 0) {
-          newEnd = proposedEnd;
-        }
-      }
-
-      state.updateResourceDates(
-        dragState.resId,
-        newStart,
-        newEnd
-      );
-    };
-
-    const handleMouseUp = () => {
-      setDragState(null);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [dragState]);
 
   const activeScenario = state.scenarios.find(s => s.id === state.activeScenarioId) || state.scenarios[0];
   const baseScenario = state.scenarios.find(s => s.id === state.baseScenarioId) ?? null;
@@ -295,26 +221,7 @@ export default function App() {
   const isDesktop = windowWidth >= 1180;
   const isMobile = windowWidth < 640;
 
-  const generateWeeksArray = (baseDateStr: string) => {
-    const weeks: Array<{ label: string; fullDate: string }> = [];
-    const validBase = parseDateOnlyUtc(baseDateStr) ??
-      parseDateOnlyUtc(DEFAULT_PROJECT_START);
-    if (!validBase) return weeks;
 
-    for (let i = 0; i < 12; i++) {
-      const nextWeek = new Date(validBase.getTime());
-      nextWeek.setUTCDate(validBase.getUTCDate() + i * 7);
-      const label = nextWeek.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'UTC'
-      });
-      weeks.push({ label, fullDate: formatDateOnlyUtc(nextWeek) });
-    }
-    return weeks;
-  };
-
-  const projectWeeks = generateWeeksArray(activeScenario ? activeScenario.projectStartDate : DEFAULT_PROJECT_START);
 
   return (
     <div style={{
@@ -576,194 +483,15 @@ export default function App() {
 
               {/* Dynamic Gantt Timeline visualization */}
 
+              <GanttTimeline projectStartDate={activeScenario.projectStartDate}
+                resources={activeScenario.resources}
+                isBaseLocked={activeIsBase}
+                isDark={isDark}
+                colors={colors}
+                onUpdateResourceDates={state.updateResourceDates}
+              />
 
-              {/* Dynamic Gantt Timeline visualization */}
-              <section style={{
-                backgroundColor: colors.card,
-                borderRadius: '16px',
-                border: `1px solid ${colors.border}`,
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.01)'
-              }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <svg style={{ width: '20px', height: '20px', color: colors.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  {activeIsBase
-                    ? 'Gantt Timeline Schedule (Base project locked)'
-                    : 'Gantt Timeline Schedule (Drag to shift, drag edges to resize)'}
-                </h3>
 
-                <div style={{ overflowX: 'auto' }} className="custom-scroll">
-                  <div style={{ minWidth: '600px' }} ref={timelineRef}>
-                    {/* Calendar Weeks Header Row */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(12, 1fr)',
-                      gap: '4px',
-                      textAlign: 'center',
-                      borderBottom: `1px solid ${colors.border}`,
-                      paddingBottom: '10px',
-                      marginBottom: '10px'
-                    }}>
-                      {projectWeeks.map((week, i) => (
-                        <span key={i} style={{ fontSize: '11px', fontWeight: 800, color: colors.textMuted }}>
-                          {week.label}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Dynamic Timeline Rows */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
-
-                      {/* Vertical Grid Lines */}
-                      <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(12, 1fr)',
-                        gap: '4px',
-                        pointerEvents: 'none'
-                      }}>
-                        {Array.from({ length: 12 }, (_, i) => (
-                          <div key={i} style={{
-                            borderRight: `1px dashed ${colors.borderLight}`,
-                            height: '100%'
-                          }} />
-                        ))}
-                      </div>
-
-                      {!activeScenario || activeScenario.resources.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '12px', color: colors.textMuted, zIndex: 1 }}>
-                          No assignments present.
-                        </div>
-                      ) : (
-                        activeScenario.resources.map(r => {
-                          const projStartMs = dateOnlyToUtcMs(
-                            activeScenario.projectStartDate
-                          );
-                          const rStartMs = dateOnlyToUtcMs(r.startDate);
-                          const rEndMs = dateOnlyToUtcMs(r.endDate);
-                          const totalDurationMs = 12 * 7 * 24 * 60 * 60 * 1000;
-
-                          if (
-                            projStartMs === null ||
-                            rStartMs === null ||
-                            rEndMs === null
-                          ) {
-                            return null;
-                          }
-
-                          const inclusiveEndMs = rEndMs + 24 * 60 * 60 * 1000;
-                          const startPct = Math.max(0, ((rStartMs - projStartMs) / totalDurationMs) * 100);
-                          const endPct = Math.min(100, ((inclusiveEndMs - projStartMs) / totalDurationMs) * 100);
-                          const widthPct = Math.max(2, endPct - startPct);
-
-                          const isVisible = startPct < 100 && endPct > 0;
-
-                          return (
-                            <div key={r.id} style={{
-                              height: '34px',
-                              position: 'relative',
-                              width: '100%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              zIndex: 1
-                            }}>
-                              {isVisible ? (
-                                <div
-                                  className="gantt-bar"
-                                  style={{
-                                    position: 'absolute',
-                                    left: `${startPct}%`,
-                                    width: `${widthPct}%`,
-                                    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#e0e7ff',
-                                    border: `1px solid ${isDark ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
-                                    borderRadius: '6px',
-                                    height: '100%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '0 4px',
-                                    boxSizing: 'border-box',
-                                    transition: dragState?.resId === r.id ? 'none' : 'all 0.2s ease',
-                                    cursor: activeIsBase ? 'default' : (dragState?.resId === r.id ? 'grabbing' : 'grab'),
-                                    opacity: activeIsBase ? 0.78 : 1,
-                                    userSelect: 'none'
-                                  }}
-                                  onMouseDown={(e) => {
-                                    if (activeIsBase) return;
-
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    const clickX = e.clientX - rect.left;
-                                    const edgeThreshold = 10;
-
-                                    let dragType: 'shift' | 'resize-start' | 'resize-end' = 'shift';
-                                    if (clickX < edgeThreshold) {
-                                      dragType = 'resize-start';
-                                    } else if (rect.width - clickX < edgeThreshold) {
-                                      dragType = 'resize-end';
-                                    }
-
-                                    setDragState({
-                                      resId: r.id,
-                                      type: dragType,
-                                      startX: e.clientX,
-                                      initialStart: r.startDate,
-                                      initialEnd: r.endDate
-                                    });
-                                    e.preventDefault();
-                                  }}
-                                >
-                                  {/* Left resize handle */}
-                                  <div style={{
-                                    width: '4px',
-                                    height: '50%',
-                                    borderRadius: '2px',
-                                    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#818cf8',
-                                    cursor: activeIsBase ? 'default' : 'ew-resize'
-                                  }} />
-
-                                  <span style={{
-                                    fontSize: '11px',
-                                    fontWeight: 700,
-                                    color: isDark ? '#a5b4fc' : '#4338ca',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    margin: '0 4px',
-                                    flex: 1,
-                                    textAlign: 'center',
-                                    pointerEvents: 'none'
-                                  }}>
-                                    {r.name || 'Consultant'} ({formatDisplayNumber(r.utilization)}%)
-                                  </span>
-
-                                  {/* Right resize handle */}
-                                  <div style={{
-                                    width: '4px',
-                                    height: '50%',
-                                    borderRadius: '2px',
-                                    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#818cf8',
-                                    cursor: activeIsBase ? 'default' : 'ew-resize'
-                                  }} />
-                                </div>
-                              ) : (
-                                <div style={{ fontSize: '10px', color: colors.textMuted, fontStyle: 'italic', paddingLeft: '8px' }}>
-                                  Timeline out of 12-week boundaries
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </section>
             </div>
 
             {/* Right Panel: Comparative Matrix Board */}
