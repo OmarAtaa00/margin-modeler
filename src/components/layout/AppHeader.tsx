@@ -1,3 +1,5 @@
+import AccountMenu from './AccountMenu';
+
 type HeaderColors = {
   card: string;
   border: string;
@@ -7,27 +9,39 @@ type HeaderColors = {
 };
 
 type AppHeaderProps = {
+  userEmail: string;
   isDark: boolean;
   isMobile: boolean;
+  isSigningOut: boolean;
+  signOutError: string | null;
   colors: HeaderColors;
   onToggleTheme: () => void;
+  onSignOut: () => void;
 };
 
 export default function AppHeader({
+  userEmail,
   isDark,
   isMobile,
+  isSigningOut,
+  signOutError,
   colors,
-  onToggleTheme
+  onToggleTheme,
+  onSignOut
 }: AppHeaderProps) {
   return (
     <header
       style={{
         display: 'flex',
-        alignItems: isMobile ? 'flex-start' : 'center',
+        alignItems: isMobile
+          ? 'flex-start'
+          : 'center',
         justifyContent: 'space-between',
         gap: '20px',
         marginBottom: '28px',
-        flexDirection: isMobile ? 'column' : 'row'
+        flexDirection: isMobile
+          ? 'column'
+          : 'row'
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -50,7 +64,8 @@ export default function AppHeader({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+              boxShadow:
+                '0 4px 12px rgba(59, 130, 246, 0.3)'
             }}
           >
             <svg
@@ -74,7 +89,9 @@ export default function AppHeader({
           <h1
             style={{
               margin: 0,
-              fontSize: isMobile ? '21px' : '24px',
+              fontSize: isMobile
+                ? '21px'
+                : '24px',
               fontWeight: 800,
               letterSpacing: '-0.025em'
             }}
@@ -91,33 +108,38 @@ export default function AppHeader({
             margin: '6px 0 0'
           }}
         >
-          Plan resource allocations, schedules, pricing, and project margins
-          in a cloud-backed workspace.
+          Plan resource allocations, schedules,
+          pricing, and project margins in a
+          cloud-backed workspace.
         </p>
       </div>
 
       <div
         style={{
-          width: isMobile ? '100%' : 'auto',
+          width: isMobile
+            ? '100%'
+            : 'auto',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px',
+          gap: '10px',
           flexWrap: 'wrap',
-          justifyContent: isMobile ? 'flex-start' : 'flex-end'
+          justifyContent: isMobile
+            ? 'flex-start'
+            : 'flex-end'
         }}
       >
         <div
           title="Workspace persistence is active"
           style={{
-            minHeight: '34px',
-            padding: '6px 14px',
-            borderRadius: '20px',
+            minHeight: '38px',
+            padding: '6px 13px',
+            borderRadius: '11px',
             backgroundColor: isDark
               ? 'rgba(255, 255, 255, 0.04)'
               : '#f1f5f9',
             border: `1px solid ${colors.border}`,
-            fontSize: '11px',
-            fontWeight: 600,
+            fontSize: '10px',
+            fontWeight: 750,
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -138,31 +160,16 @@ export default function AppHeader({
           Database Synced
         </div>
 
-        <button
-          type="button"
-          onClick={onToggleTheme}
-          aria-label={
-            isDark
-              ? 'Switch to light theme'
-              : 'Switch to dark theme'
-          }
-          aria-pressed={isDark}
-          style={{
-            minHeight: '34px',
-            padding: '8px 12px',
-            borderRadius: '10px',
-            border: `1px solid ${colors.border}`,
-            backgroundColor: colors.card,
-            color: colors.text,
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 600,
-            transition: 'all 0.15s ease',
-            margin: 0
-          }}
-        >
-          {isDark ? '☀️ Light' : '🌙 Dark'}
-        </button>
+        <AccountMenu
+          email={userEmail}
+          isDark={isDark}
+          isMobile={isMobile}
+          isSigningOut={isSigningOut}
+          errorMessage={signOutError}
+          colors={colors}
+          onToggleTheme={onToggleTheme}
+          onSignOut={onSignOut}
+        />
       </div>
     </header>
   );

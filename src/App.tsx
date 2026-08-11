@@ -1,4 +1,5 @@
 
+import { useUser } from './contexts/UserContext';
 import ConfirmationDialog from './components/common/ConfirmationDialog';
 import Toast from './components/common/Toast';
 import ProjectNavigation from './components/projects/ProjectNavigation';
@@ -31,8 +32,11 @@ import {
   useProjectStore
 } from './store/projectStore';
 import {
-  initializeProjectPersistence
+  flushProjectPersistence,
+  initializeProjectPersistence,
+  resetProjectPersistence
 } from './services/projectPersistence';
+import { supabase } from './supabaseClient';
 
 export type { Resource, Scenario } from './validation/workspaceValidation';
 
@@ -49,9 +53,43 @@ const getInitialDarkMode = (): boolean => {
 };
 
 export default function App() {
+  const { user } = useUser();
+
+  const [isSigningOut, setIsSigningOut] =
+    useState(false);
+
+  const [signOutError, setSignOutError] =
+    useState<string | null>(null);
   const [isDark, setIsDark] = useState<boolean>(getInitialDarkMode);
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
 
+    setIsSigningOut(true);
+    setSignOutError(null);
+
+    try {
+      await flushProjectPersistence();
+      await resetProjectPersistence();
+
+      const { error } =
+        await supabase.auth.signOut({
+          scope: 'local'
+        });
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Sign out failed. Please try again.';
+
+      setSignOutError(message);
+      setIsSigningOut(false);
+    }
+  };
   useEffect(() => {
     void initializeProjectPersistence();
   }, []);
@@ -381,10 +419,20 @@ export default function App() {
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
 
         <AppHeader
+          userEmail={
+            user?.email ?? 'Signed-in user'
+          }
           isDark={isDark}
           isMobile={isMobile}
+          isSigningOut={isSigningOut}
+          signOutError={signOutError}
           colors={colors}
-          onToggleTheme={() => setIsDark((current) => !current)}
+          onToggleTheme={() =>
+            setIsDark((current) => !current)
+          }
+          onSignOut={() => {
+            void handleSignOut();
+          }}
         />
 
         <ProjectNavigation
