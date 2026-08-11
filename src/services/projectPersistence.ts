@@ -203,3 +203,32 @@ export const flushProjectPersistence =
     await initializeProjectPersistence();
     await saveQueue;
   };
+  export const resetProjectPersistence =
+  async (): Promise<void> => {
+    try {
+      await saveQueue;
+    } catch (error) {
+      console.error(
+        'Could not finish the pending workspace save:',
+        error
+      );
+    }
+
+    stopPersistence?.();
+
+    stopPersistence = null;
+    currentProjectId = null;
+    persistencePromise = null;
+    saveQueue = Promise.resolve();
+
+    try {
+      localStorage.removeItem(
+        LOCAL_STORAGE_KEY
+      );
+    } catch (error) {
+      console.error(
+        'Could not clear the local workspace backup:',
+        error
+      );
+    }
+  };
