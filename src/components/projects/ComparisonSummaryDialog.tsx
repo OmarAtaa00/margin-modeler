@@ -6,7 +6,6 @@ import {
 
 import {
     formatCurrency,
-    formatDisplayNumber,
     formatSignedCurrency
 } from '../../utils/formatting';
 
