@@ -1,8 +1,17 @@
-import CustomDatePicker from '../common/CustomDatePicker';
-
-import type { ScenarioTotals } from '../../utils/scenarioCalculations';
 import type { MarginTheme } from '../../utils/marginTheme';
 import type { Scenario } from '../../validation/workspaceValidation';
+import CustomDatePicker from '../common/CustomDatePicker';
+
+import {
+    formatCurrency,
+    formatSignedCurrency
+} from '../../utils/formatting';
+
+import type {
+    ScenarioTotals
+} from '../../utils/scenarioCalculations';
+
+
 
 type ProjectSummaryColors = {
     card: string;
@@ -42,11 +51,18 @@ export default function ActiveProjectSummary({
     onChangeProjectStartDate,
     onToggleBase
 }: ActiveProjectSummaryProps) {
+
     const marginLabel = isBase
         ? 'Base margin'
         : baseTotals
             ? 'Compared margin'
             : 'Scenario margin';
+
+    const marginValueDifference =
+        baseTotals
+            ? totals.marginValue -
+            baseTotals.marginValue
+            : null;
 
     return (
         <div
@@ -287,48 +303,47 @@ export default function ActiveProjectSummary({
                         boxSizing: 'border-box'
                     }}
                 >
+
                     <span
                         style={{
-                            fontSize: '9px',
+                            marginTop: isMobile ? 0 : '5px',
+                            fontSize: '10px',
                             fontWeight: 850,
-                            lineHeight: 1.3,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.08em',
-                            opacity: 0.82
+                            opacity: 0.92
                         }}
                     >
-                        {marginLabel}
+                        {formatCurrency(
+                            totals.marginValue
+                        )}{' '}
+                        margin value
                     </span>
-
-                    <div
-                        style={{
-                            fontSize: '26px',
-                            lineHeight: 1,
-                            fontWeight: 900,
-                            letterSpacing: '-0.03em'
-                        }}
-                    >
-                        {totals.margin.toFixed(1)}%
-                    </div>
 
                     {baseTotals && (
                         <span
                             style={{
+                                marginTop: isMobile ? 0 : '4px',
                                 fontSize: '9px',
                                 fontWeight: 800,
-                                marginTop: isMobile ? 0 : '5px',
+                                lineHeight: 1.45,
                                 opacity: 0.86
                             }}
                         >
                             {isBase
                                 ? 'Comparison reference'
-                                : `${marginDelta !== null && marginDelta >= 0
+                                : `${formatSignedCurrency(
+                                    marginValueDifference ?? 0
+                                )} and ${marginDelta !== null &&
+                                    marginDelta >= 0
                                     ? '+'
-                                    : ''}${marginDelta?.toFixed(1)} pts vs ${baseTotals.margin.toFixed(1)}%`}
+                                    : ''
+                                }${marginDelta?.toFixed(
+                                    1
+                                )} pts vs base`}
                         </span>
                     )}
                 </div>
             </div>
         </div>
     );
+
 }

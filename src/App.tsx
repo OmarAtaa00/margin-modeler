@@ -37,6 +37,11 @@ import {
   resetProjectPersistence
 } from './services/projectPersistence';
 import { supabase } from './supabaseClient';
+import {
+  formatCurrency,
+  formatDisplayNumber,
+  formatSignedCurrency
+} from './utils/formatting';
 
 export type { Resource, Scenario } from './validation/workspaceValidation';
 
@@ -574,6 +579,10 @@ export default function App() {
                     const isCurrent = s.id === state.activeScenarioId;
                     const isBase = s.id === state.baseScenarioId;
                     const marginDelta = baseTotals ? totals.margin - baseTotals.margin : null;
+                    const marginValueDelta = baseTotals
+                      ? totals.marginValue -
+                      baseTotals.marginValue
+                      : null;
                     const matrixTheme = getScenarioMarginTheme(
                       totals.margin,
                       baseTotals?.margin ?? null,
@@ -616,29 +625,113 @@ export default function App() {
                               }}>BASE</span>
                             )}
                           </div>
-                          <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '10px', color: colors.textMuted }}>Cost: ${Math.round(totals.totalCost).toLocaleString()}</span>
-                            <span style={{ fontSize: '10px', color: colors.textMuted }}>Rev: ${Math.round(totals.totalRevenue).toLocaleString()}</span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: '10px',
+                              marginTop: '5px',
+                              flexWrap: 'wrap'
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: colors.textMuted
+                              }}
+                            >
+                              Cost: {formatCurrency(
+                                totals.totalCost,
+                                0
+                              )}
+                            </span>
+
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: colors.textMuted
+                              }}
+                            >
+                              Revenue: {formatCurrency(
+                                totals.totalRevenue,
+                                0
+                              )}
+                            </span>
+
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: matrixTheme.text,
+                                fontWeight: 800
+                              }}
+                            >
+                              Margin: {formatCurrency(
+                                totals.marginValue,
+                                0
+                              )}
+                            </span>
+
                             {baseTotals && (
-                              <span style={{ fontSize: '10px', color: matrixTheme.text, fontWeight: 800 }}>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  color: matrixTheme.text,
+                                  fontWeight: 800
+                                }}
+                              >
                                 {isBase
-                                  ? 'Reference'
-                                  : `${marginDelta !== null && marginDelta >= 0 ? '+' : ''}${marginDelta?.toFixed(1)} pts`}
+                                  ? 'Comparison reference'
+                                  : `${formatSignedCurrency(
+                                    marginValueDelta ?? 0,
+                                    0
+                                  )} · ${marginDelta !== null &&
+                                    marginDelta >= 0
+                                    ? '+'
+                                    : ''
+                                  }${marginDelta?.toFixed(
+                                    1
+                                  )} pts`}
                               </span>
                             )}
                           </div>
                         </div>
 
-                        <span style={{
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          backgroundColor: matrixTheme.badge,
-                          color: matrixTheme.text
-                        }}>
-                          {totals.margin.toFixed(1)}%
-                        </span>
+                        <div
+                          style={{
+                            flexShrink: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: '4px'
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              backgroundColor:
+                                matrixTheme.badge,
+                              color: matrixTheme.text
+                            }}
+                          >
+                            {totals.margin.toFixed(1)}%
+                          </span>
+
+                          <span
+                            style={{
+                              color: matrixTheme.text,
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {formatCurrency(
+                              totals.marginValue,
+                              0
+                            )}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}

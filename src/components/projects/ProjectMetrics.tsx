@@ -1,6 +1,11 @@
-import { formatDisplayNumber } from '../../utils/formatting';
+import {
+  formatCurrency,
+  formatDisplayNumber
+} from '../../utils/formatting';
 
-import type { ScenarioTotals } from '../../utils/scenarioCalculations';
+import type {
+  ScenarioTotals
+} from '../../utils/scenarioCalculations';
 
 type ProjectMetricsColors = {
   card: string;
@@ -22,21 +27,28 @@ export default function ProjectMetrics({
   const metrics = [
     {
       label: 'Effective Work Hours',
-      value: `${formatDisplayNumber(totals.totalHours)} hrs`
+      value:
+        `${formatDisplayNumber(
+          totals.totalHours
+        )} hrs`
     },
     {
       label: 'Calculated Cost',
-      value: `$${totals.totalCost.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })}`
+      value: formatCurrency(
+        totals.totalCost
+      )
     },
     {
       label: 'Expected Revenue',
-      value: `$${totals.totalRevenue.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })}`
+      value: formatCurrency(
+        totals.totalRevenue
+      )
+    },
+    {
+      label: 'Margin Value',
+      value: formatCurrency(
+        totals.marginValue
+      )
     }
   ];
 
@@ -46,7 +58,7 @@ export default function ProjectMetrics({
         display: 'grid',
         gridTemplateColumns: isMobile
           ? '1fr'
-          : 'repeat(3, 1fr)',
+          : 'repeat(2, minmax(0, 1fr))',
         gap: '16px'
       }}
     >
@@ -56,9 +68,11 @@ export default function ProjectMetrics({
           style={{
             backgroundColor: colors.card,
             borderRadius: '16px',
-            border: `1px solid ${colors.border}`,
+            border:
+              `1px solid ${colors.border}`,
             padding: '20px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.01)'
+            boxShadow:
+              '0 2px 8px rgba(0, 0, 0, 0.01)'
           }}
         >
           <span
@@ -77,7 +91,8 @@ export default function ProjectMetrics({
             style={{
               fontSize: '20px',
               fontWeight: 800,
-              marginTop: '4px'
+              marginTop: '4px',
+              overflowWrap: 'anywhere'
             }}
           >
             {metric.value}
