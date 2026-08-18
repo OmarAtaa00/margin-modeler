@@ -39,7 +39,6 @@ import {
 import { supabase } from './supabaseClient';
 import {
   formatCurrency,
-  formatDisplayNumber,
   formatSignedCurrency
 } from './utils/formatting';
 

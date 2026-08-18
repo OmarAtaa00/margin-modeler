@@ -1,5 +1,3 @@
-import type { MarginTheme } from '../../utils/marginTheme';
-import type { Scenario } from '../../validation/workspaceValidation';
 import CustomDatePicker from '../common/CustomDatePicker';
 
 import {
@@ -11,7 +9,13 @@ import type {
     ScenarioTotals
 } from '../../utils/scenarioCalculations';
 
+import type {
+    MarginTheme
+} from '../../utils/marginTheme';
 
+import type {
+    Scenario
+} from '../../validation/workspaceValidation';
 
 type ProjectSummaryColors = {
     card: string;
@@ -33,7 +37,9 @@ type ActiveProjectSummaryProps = {
     isMobile: boolean;
     colors: ProjectSummaryColors;
     onChangeName: (name: string) => void;
-    onChangeProjectStartDate: (date: string) => void;
+    onChangeProjectStartDate: (
+        date: string
+    ) => void;
     onToggleBase: () => void;
 };
 
@@ -51,7 +57,6 @@ export default function ActiveProjectSummary({
     onChangeProjectStartDate,
     onToggleBase
 }: ActiveProjectSummaryProps) {
-
     const marginLabel = isBase
         ? 'Base margin'
         : baseTotals
@@ -64,13 +69,24 @@ export default function ActiveProjectSummary({
             baseTotals.marginValue
             : null;
 
+    const marginPointDifference =
+        marginDelta ?? 0;
+
+    const formattedPointDifference =
+        `${marginPointDifference > 0
+            ? '+'
+            : ''
+        }${marginPointDifference.toFixed(1)} pts`;
+
     return (
         <div
             style={{
                 backgroundColor: colors.card,
                 borderRadius: '14px',
                 border: `1px solid ${colors.border}`,
-                padding: isMobile ? '16px' : '20px',
+                padding: isMobile
+                    ? '16px'
+                    : '20px',
                 boxShadow: isDark
                     ? 'none'
                     : '0 2px 10px rgba(15, 23, 42, 0.035)',
@@ -84,7 +100,9 @@ export default function ActiveProjectSummary({
                         ? 'minmax(0, 1fr)'
                         : 'minmax(0, 1fr) auto',
                     alignItems: 'center',
-                    gap: isMobile ? '16px' : '24px'
+                    gap: isMobile
+                        ? '16px'
+                        : '24px'
                 }}
             >
                 <div style={{ minWidth: 0 }}>
@@ -126,7 +144,9 @@ export default function ActiveProjectSummary({
                                 minHeight: '32px',
                                 padding: '5px 10px 5px 6px',
                                 borderRadius: '999px',
-                                border: `1px solid ${isBase ? marginTheme.border : colors.border
+                                border: `1px solid ${isBase
+                                    ? marginTheme.border
+                                    : colors.border
                                     }`,
                                 backgroundColor: isBase
                                     ? marginTheme.bg
@@ -157,7 +177,8 @@ export default function ActiveProjectSummary({
                                         ? 'flex-end'
                                         : 'flex-start',
                                     boxSizing: 'border-box',
-                                    transition: 'all 0.18s ease'
+                                    transition:
+                                        'all 0.18s ease'
                                 }}
                             >
                                 <span
@@ -185,9 +206,11 @@ export default function ActiveProjectSummary({
                         type="text"
                         value={scenario.name}
                         disabled={isBase}
-                        onChange={(event) =>
-                            onChangeName(event.target.value)
-                        }
+                        onChange={(event) => {
+                            onChangeName(
+                                event.target.value
+                            );
+                        }}
                         onFocus={(event) => {
                             if (!isBase) {
                                 event.currentTarget.style.borderBottomColor =
@@ -210,19 +233,24 @@ export default function ActiveProjectSummary({
                             minHeight: 0,
                             padding: '1px 0 5px',
                             margin: 0,
-                            fontSize: isMobile ? '18px' : '20px',
+                            fontSize: isMobile
+                                ? '18px'
+                                : '20px',
                             fontWeight: 800,
                             lineHeight: 1.25,
                             letterSpacing: '-0.02em',
                             backgroundColor: 'transparent',
                             border: 'none',
-                            borderBottom: '1px solid transparent',
+                            borderBottom:
+                                '1px solid transparent',
                             borderRadius: 0,
                             boxShadow: 'none',
                             WebkitAppearance: 'none',
                             appearance: 'none',
                             color: colors.text,
-                            cursor: isBase ? 'not-allowed' : 'text',
+                            cursor: isBase
+                                ? 'not-allowed'
+                                : 'text',
                             opacity: isBase ? 0.72 : 1,
                             outline: 'none'
                         }}
@@ -249,13 +277,19 @@ export default function ActiveProjectSummary({
 
                         <div
                             style={{
-                                width: isMobile ? '100%' : '164px',
+                                width: isMobile
+                                    ? '100%'
+                                    : '164px',
                                 maxWidth: '100%'
                             }}
                         >
                             <CustomDatePicker
-                                value={scenario.projectStartDate}
-                                onChange={onChangeProjectStartDate}
+                                value={
+                                    scenario.projectStartDate
+                                }
+                                onChange={
+                                    onChangeProjectStartDate
+                                }
                                 isDark={isDark}
                                 colors={colors}
                                 disabled={isBase}
@@ -269,47 +303,89 @@ export default function ActiveProjectSummary({
                                 marginTop: '12px',
                                 padding: '10px 12px',
                                 borderRadius: '10px',
-                                border: `1px solid ${marginTheme.border}`,
-                                backgroundColor: marginTheme.bg,
+                                border:
+                                    `1px solid ${marginTheme.border}`,
+                                backgroundColor:
+                                    marginTheme.bg,
                                 color: marginTheme.text,
                                 fontSize: '11px',
                                 fontWeight: 700,
                                 lineHeight: 1.45
                             }}
                         >
-                            🔒 This base project is read-only. Use Clone Active
-                            to create an editable comparison.
+                            🔒 This base project is read-only.
+                            Use Clone Active to create an
+                            editable comparison.
                         </div>
                     )}
                 </div>
 
                 <div
                     style={{
-                        width: isMobile ? '100%' : '168px',
-                        minHeight: '88px',
-                        padding: '14px 16px',
+                        width: isMobile
+                            ? '100%'
+                            : '190px',
+                        minHeight: '116px',
+                        padding: '15px 16px',
                         borderRadius: '12px',
-                        textAlign: isMobile ? 'left' : 'center',
-                        backgroundColor: marginTheme.bg,
-                        border: `1px solid ${marginTheme.border}`,
+                        textAlign: isMobile
+                            ? 'left'
+                            : 'center',
+                        backgroundColor:
+                            marginTheme.bg,
+                        border:
+                            `1px solid ${marginTheme.border}`,
                         color: marginTheme.text,
                         display: 'flex',
-                        flexDirection: isMobile ? 'row' : 'column',
+                        flexDirection: isMobile
+                            ? 'row'
+                            : 'column',
                         alignItems: 'center',
                         justifyContent: isMobile
                             ? 'space-between'
                             : 'center',
-                        gap: isMobile ? '12px' : '2px',
-                        boxSizing: 'border-box'
+                        gap: isMobile
+                            ? '12px'
+                            : '5px',
+                        boxSizing: 'border-box',
+                        flexWrap: isMobile
+                            ? 'wrap'
+                            : 'nowrap'
                     }}
                 >
+                    <span
+                        style={{
+                            fontSize: '9px',
+                            fontWeight: 850,
+                            lineHeight: 1.3,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.08em',
+                            opacity: 0.82
+                        }}
+                    >
+                        {marginLabel}
+                    </span>
+
+                    <div
+                        style={{
+                            fontSize: '26px',
+                            lineHeight: 1,
+                            fontWeight: 900,
+                            letterSpacing: '-0.03em'
+                        }}
+                    >
+                        {totals.margin.toFixed(1)}%
+                    </div>
 
                     <span
                         style={{
-                            marginTop: isMobile ? 0 : '5px',
+                            marginTop: isMobile
+                                ? 0
+                                : '3px',
                             fontSize: '10px',
                             fontWeight: 850,
-                            opacity: 0.92
+                            lineHeight: 1.4,
+                            opacity: 0.94
                         }}
                     >
                         {formatCurrency(
@@ -321,7 +397,9 @@ export default function ActiveProjectSummary({
                     {baseTotals && (
                         <span
                             style={{
-                                marginTop: isMobile ? 0 : '4px',
+                                marginTop: isMobile
+                                    ? 0
+                                    : '2px',
                                 fontSize: '9px',
                                 fontWeight: 800,
                                 lineHeight: 1.45,
@@ -331,19 +409,13 @@ export default function ActiveProjectSummary({
                             {isBase
                                 ? 'Comparison reference'
                                 : `${formatSignedCurrency(
-                                    marginValueDifference ?? 0
-                                )} and ${marginDelta !== null &&
-                                    marginDelta >= 0
-                                    ? '+'
-                                    : ''
-                                }${marginDelta?.toFixed(
-                                    1
-                                )} pts vs base`}
+                                    marginValueDifference ??
+                                    0
+                                )} · ${formattedPointDifference} vs base`}
                         </span>
                     )}
                 </div>
             </div>
         </div>
     );
-
 }
