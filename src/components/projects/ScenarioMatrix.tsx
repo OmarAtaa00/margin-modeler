@@ -32,6 +32,7 @@ type ScenarioMatrixProps = {
     onSwitchScenario: (
         scenario: Scenario
     ) => void;
+    onGenerateSummary: () => void;
 };
 
 export default function ScenarioMatrix({
@@ -40,13 +41,24 @@ export default function ScenarioMatrix({
     baseScenarioId,
     isDark,
     colors,
-    onSwitchScenario
+    onSwitchScenario,
+    onGenerateSummary
 }: ScenarioMatrixProps) {
     const baseScenario =
         scenarios.find(
             (scenario) =>
                 scenario.id === baseScenarioId
         ) ?? null;
+    const activeScenario =
+        scenarios.find(
+            (scenario) =>
+                scenario.id === activeScenarioId
+        ) ?? null;
+
+    const comparisonAvailable =
+        baseScenario !== null &&
+        activeScenario !== null &&
+        activeScenario.id !== baseScenario.id;
 
     const baseTotals = baseScenario
         ? computeScenarioTotals(
@@ -415,31 +427,83 @@ export default function ScenarioMatrix({
                 >
                     <h4
                         style={{
-                            margin: '0 0 6px',
+                            margin: 0,
                             fontSize: '11px',
-                            fontWeight: 800,
+                            fontWeight: 850,
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em'
                         }}
                     >
-                        Workday Math Mechanics
+                        Comparison Summary
                     </h4>
 
                     <p
                         style={{
-                            margin: 0,
+                            margin: '7px 0 14px',
                             fontSize: '11px',
-                            lineHeight: 1.5
+                            lineHeight: 1.55
                         }}
                     >
-                        Calculated working days skip
-                        Saturdays and Sundays. Each
-                        scheduled business day represents
-                        8 base hours. Changing project
-                        schedules instantly updates
-                        assignments, revenue, and scenario
-                        margin metrics.
+                        {!baseScenario
+                            ? 'Set a project as the base before generating a comparison summary.'
+                            : !activeScenario
+                                ? 'Select a project before generating a comparison summary.'
+                                : activeScenario.id ===
+                                    baseScenario.id
+                                    ? 'Select a project other than the base to generate a comparison summary.'
+                                    : `Compare ${activeScenario.name} against ${baseScenario.name}.`}
                     </p>
+
+                    <button
+                        type="button"
+                        disabled={!comparisonAvailable}
+                        onClick={onGenerateSummary}
+                        style={{
+                            width: '100%',
+                            minHeight: '40px',
+                            padding: '9px 14px',
+                            margin: 0,
+                            borderRadius: '9px',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            backgroundColor: colors.primary,
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            fontWeight: 850,
+                            cursor: comparisonAvailable
+                                ? 'pointer'
+                                : 'not-allowed',
+                            opacity: comparisonAvailable
+                                ? 1
+                                : 0.5,
+                            boxShadow: comparisonAvailable
+                                ? '0 4px 12px rgba(59, 130, 246, 0.22)'
+                                : 'none'
+                        }}
+                    >
+                        <svg
+                            aria-hidden="true"
+                            style={{
+                                width: '16px',
+                                height: '16px'
+                            }}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M9 17v-2m3 2v-4m3 4V9m4 12H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z"
+                            />
+                        </svg>
+
+                        Generate Comparison Summary
+                    </button>
                 </div>
             </div>
         </div>

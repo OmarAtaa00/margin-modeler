@@ -1,5 +1,6 @@
 
 import ScenarioMatrix from './components/projects/ScenarioMatrix';
+import ComparisonSummaryDialog from './components/projects/ComparisonSummaryDialog';
 import { useUser } from './contexts/UserContext';
 import ConfirmationDialog from './components/common/ConfirmationDialog';
 import Toast from './components/common/Toast';
@@ -96,7 +97,12 @@ export default function App() {
     void initializeProjectPersistence();
   }, []);
 
+
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [
+    comparisonSummaryOpen,
+    setComparisonSummaryOpen
+  ] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const state = useProjectStore();
 
@@ -257,6 +263,24 @@ export default function App() {
     activeIsBase,
     isDark
   );
+  useEffect(() => {
+    if (!comparisonSummaryOpen) {
+      return;
+    }
+
+    if (
+      !baseScenario ||
+      !activeScenario ||
+      activeScenario.id ===
+      baseScenario.id
+    ) {
+      setComparisonSummaryOpen(false);
+    }
+  }, [
+    activeScenario,
+    baseScenario,
+    comparisonSummaryOpen
+  ]);
 
   const isDesktop = windowWidth >= 1180;
   const isMobile = windowWidth < 640;
@@ -417,6 +441,26 @@ export default function App() {
           onCancel={() => setConfirmation(null)}
         />
       )}
+      {comparisonSummaryOpen &&
+        baseScenario &&
+        activeScenario &&
+        activeScenario.id !==
+        baseScenario.id && (
+          <ComparisonSummaryDialog
+            baseScenario={baseScenario}
+            currentScenario={
+              activeScenario
+            }
+            colors={colors}
+            isDark={isDark}
+            isMobile={isMobile}
+            onClose={() => {
+              setComparisonSummaryOpen(
+                false
+              );
+            }}
+          />
+        )}
 
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
 
@@ -560,9 +604,28 @@ export default function App() {
                   scenario.id
                 );
 
+                setComparisonSummaryOpen(false);
+
                 triggerToast(
                   `Switched to ${scenario.name}`
                 );
+              }}
+              onGenerateSummary={() => {
+                if (
+                  !baseScenario ||
+                  !activeScenario ||
+                  activeScenario.id ===
+                  baseScenario.id
+                ) {
+                  triggerToast(
+                    'Select a project other than the base before generating a comparison summary.',
+                    'error'
+                  );
+
+                  return;
+                }
+
+                setComparisonSummaryOpen(true);
               }}
             />
           </main>
