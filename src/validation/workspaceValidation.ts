@@ -4,10 +4,22 @@ import {
   synchronizeResourceFromAllocation,
   synchronizeResourceFromHours
 } from '../utils/resourceCalculations';
+export const RESOURCE_REGIONS = [
+  'AMER',
+  'EMEA',
+  'APAC',
+  'LATAM',
+  'Global',
+  'Other'
+] as const;
 
+export type ResourceRegion =
+  (typeof RESOURCE_REGIONS)[number];
 export type Resource = {
   id: string;
   name: string;
+  role: string;
+  region: ResourceRegion;
   costRate: number;
   billRate: number;
   startDate: string;
@@ -37,6 +49,13 @@ const MAX_SCENARIOS = 100;
 const MAX_RESOURCES_PER_SCENARIO = 1_000;
 const MAX_ID_LENGTH = 100;
 const MAX_NAME_LENGTH = 50;
+const MAX_ROLE_LENGTH = 80;
+
+const DEFAULT_RESOURCE_ROLE =
+  'Consultant';
+
+const DEFAULT_RESOURCE_REGION:
+  ResourceRegion = 'Global';
 const MAX_HOURLY_RATE = 10_000;
 const CAPACITY_TOLERANCE = 0.01;
 
@@ -62,6 +81,33 @@ const readName = (value: unknown): string | null => {
   }
 
   return value;
+};
+const readRole = (
+  value: unknown
+): string | null => {
+  if (
+    typeof value !== 'string' ||
+    value.length > MAX_ROLE_LENGTH
+  ) {
+    return null;
+  }
+
+  return value;
+};
+
+const readRegion = (
+  value: unknown
+): ResourceRegion | null => {
+  if (
+    typeof value !== 'string' ||
+    !RESOURCE_REGIONS.includes(
+      value as ResourceRegion
+    )
+  ) {
+    return null;
+  }
+
+  return value as ResourceRegion;
 };
 
 const readFiniteNumber = (
@@ -104,6 +150,22 @@ const validateResource = (
     return {
       ok: false,
       error: `${location} has an invalid name. Names may contain at most ${MAX_NAME_LENGTH} characters.`
+    };
+  }
+
+  const role = readRole(value.role ?? DEFAULT_RESOURCE_ROLE);
+  if (role === null) {
+    return {
+      ok: false,
+      error: `${location} has an invalid role. Roles may contain at most ${MAX_ROLE_LENGTH} characters.`
+    };
+  }
+
+  const region = readRegion(value.region ?? DEFAULT_RESOURCE_REGION);
+  if (region === null) {
+    return {
+      ok: false,
+      error: `${location} has an invalid region.`
     };
   }
 
@@ -156,12 +218,14 @@ const validateResource = (
   const baseResource: Resource = {
     id,
     name,
+    role,
+    region,
     costRate,
     billRate,
     startDate: value.startDate,
     endDate: value.endDate,
     utilization
-  };
+  };  
 
   if (value.directHours === undefined) {
     return {
@@ -212,6 +276,33 @@ const validateScenario = (
       error: `${location} has an invalid name. Names may contain at most ${MAX_NAME_LENGTH} characters.`
     };
   }
+  const role =
+  value.role === undefined
+    ? DEFAULT_RESOURCE_ROLE
+    : readRole(value.role);
+
+if (role === null) {
+  return {
+    ok: false,
+    error:
+      `${location} has an invalid role. ` +
+      `Roles may contain at most ${MAX_ROLE_LENGTH} characters.`
+  };
+}
+
+const region =
+  value.region === undefined
+    ? DEFAULT_RESOURCE_REGION
+    : readRegion(value.region);
+
+if (region === null) {
+  return {
+    ok: false,
+    error:
+      `${location} has an invalid region. ` +
+      `Use one of: ${RESOURCE_REGIONS.join(', ')}.`
+  };
+}
 
   if (
     typeof value.projectStartDate !== 'string' ||

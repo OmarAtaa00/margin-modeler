@@ -144,9 +144,23 @@ const getResourceChanges = (
   ) {
     changes.push('direct hours');
   }
+  if (
+  baseResource.role !==
+  currentResource.role
+) {
+  changes.push('role');
+}
+
+if (
+  baseResource.region !==
+  currentResource.region
+) {
+  changes.push('region');
+}
 
   return changes;
 };
+
 
 const compareResources = (
   baseScenario: Scenario,

@@ -77,6 +77,8 @@ const defaultResources: Resource[] = [
   {
     id: '1',
     name: 'Ahmed',
+    role: 'Consultant',
+    region: 'EMEA',
     costRate: 60,
     billRate: 250,
     startDate: '2026-07-13',
@@ -90,7 +92,9 @@ const defaultResources: Resource[] = [
     billRate: 150,
     startDate: '2026-07-13',
     endDate: '2026-10-02',
-    utilization: 100
+    utilization: 100,
+    role: '',
+    region: 'AMER'
   },
   {
     id: '3',
@@ -99,7 +103,9 @@ const defaultResources: Resource[] = [
     billRate: 200,
     startDate: '2026-07-20',
     endDate: '2026-10-02',
-    utilization: 100
+    utilization: 100,
+    role: '',
+    region: 'EMEA'
   }
 ];
 
@@ -121,6 +127,8 @@ const createDefaultWorkspace = (): PersistedWorkspace => ({
         {
           id: '1',
           name: 'Ahmed',
+          role: 'Consultant',
+          region: 'EMEA',
           costRate: 60,
           billRate: 250,
           startDate: '2026-07-13',
@@ -134,7 +142,9 @@ const createDefaultWorkspace = (): PersistedWorkspace => ({
           billRate: 150,
           startDate: '2026-07-13',
           endDate: '2026-10-02',
-          utilization: 50
+          utilization: 50,
+          role: '',
+          region: 'AMER'
         },
         {
           id: '3',
@@ -143,9 +153,10 @@ const createDefaultWorkspace = (): PersistedWorkspace => ({
           billRate: 200,
           startDate: '2026-07-20',
           endDate: '2026-10-02',
-          utilization: 80
-        }
-      ]
+          utilization: 80,
+          role: '',
+          region: 'EMEA'
+        }]
     }
   ]
 });
@@ -410,7 +421,9 @@ export const useProjectStore = create<ProjectState>((set) => ({
                 12,
                 DEFAULT_PROJECT_START
               ),
-              utilization: 100
+              utilization: 100,
+              role: '',
+              region: 'AMER'
             },
             100
           );
