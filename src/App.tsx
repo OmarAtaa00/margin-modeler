@@ -462,7 +462,13 @@ export default function App() {
           />
         )}
 
-      <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '1800px',
+          margin: '0 auto'
+        }}
+      >
 
         <AppHeader
           userEmail={
@@ -506,19 +512,33 @@ export default function App() {
           onExportJSON={exportScenariosToJSON}
         />
 
-        {/* Main Grid Body */}
 
         {/* Main Grid Body */}
         {activeScenario ? (
-          <main style={{
-            display: 'grid',
-            gridTemplateColumns: isDesktop ? 'minmax(0, 2fr) minmax(300px, 1fr)' : 'minmax(0, 1fr)',
-            gap: isMobile ? '20px' : '32px',
-            alignItems: 'start'
-          }}>
+          <main
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isDesktop
+                ? 'minmax(0, 1fr) 340px'
+                : 'minmax(0, 1fr)',
+              gap: isMobile
+                ? '20px'
+                : isDesktop
+                  ? '24px'
+                  : '28px',
+              alignItems: 'start'
+            }}
+          >
 
             {/* Left Panel: Resource Cards and Gantt Visualizer */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', minWidth: 0 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: isMobile ? '20px' : '24px',
+                minWidth: 0
+              }}
+            >
               <ActiveProjectSummary
                 scenario={activeScenario}
                 totals={activeTotals}
@@ -557,7 +577,7 @@ export default function App() {
                 isBaseLocked={activeIsBase}
                 isDark={isDark}
                 isMobile={isMobile}
-                isWideLayout={windowWidth >= 720}
+                isWideLayout={windowWidth >= 1024}
                 colors={colors}
                 onAddResource={() => {
                   state.addResource();
