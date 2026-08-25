@@ -11,7 +11,6 @@ import { calculateWorkingDays } from '../../utils/dates';
 
 import {
     formatDisplayNumber,
-    roundForDisplay
 } from '../../utils/formatting';
 
 import type { Resource } from '../../validation/workspaceValidation';
@@ -330,90 +329,43 @@ export default function ResourceCard({
                 <div
                     style={{
                         flex: 1,
-                        minWidth: '240px'
+                        minWidth: isMobile
+                            ? '100%'
+                            : '280px',
+                        display: 'grid',
+                        gridTemplateColumns: isMobile
+                            ? '1fr'
+                            : 'minmax(120px, auto) minmax(0, 1fr)',
+                        alignItems: 'end',
+                        gap: '14px'
                     }}
                 >
                     <div
                         style={{
                             display: 'flex',
-                            justifyContent: 'space-between',
-                            marginBottom: '6px'
+                            flexDirection: 'column',
+                            alignItems: 'flex-start',
+                            gap: '5px'
                         }}
                     >
-                        <div
-                            style={{
-                                display: 'flex',
-                                gap: '8px',
-                                alignItems: 'center',
-                                flexWrap: 'wrap'
-                            }}
-                        >
-                            <span style={fieldLabelStyle}>
-                                Allocation Rate
-                            </span>
-
-                            <span
-                                style={{
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    color: colors.accent,
-                                    backgroundColor: isDark
-                                        ? 'rgba(99, 102, 241, 0.15)'
-                                        : '#e0e7ff',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px'
-                                }}
-                            >
-                                {workingDays} weekdays ·{' '}
-                                {formatDisplayNumber(capacityHours, 0)} available hrs
-                            </span>
-                        </div>
-
                         <span
                             style={{
-                                fontSize: '12px',
-                                fontWeight: 700,
-                                color: colors.primary
+                                fontSize: '9px',
+                                lineHeight: 1,
+                                fontWeight: 800,
+                                color: colors.textMuted,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.07em'
                             }}
                         >
-                            {formatDisplayNumber(directHours)} hrs
+                            Allocation
                         </span>
-                    </div>
-
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px'
-                        }}
-                    >
-                        <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={roundForDisplay(resource.utilization)}
-                            disabled={isBaseLocked}
-                            onChange={(event) =>
-                                onUpdateAllocation(
-                                    resource.id,
-                                    Number(event.target.value)
-                                )
-                            }
-                            style={{
-                                flex: 1,
-                                cursor: isBaseLocked
-                                    ? 'not-allowed'
-                                    : 'pointer',
-                                opacity: isBaseLocked ? 0.62 : 1
-                            }}
-                        />
 
                         <div
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px'
+                                gap: '5px'
                             }}
                         >
                             <ResourceAllocationInput
@@ -430,12 +382,101 @@ export default function ResourceCard({
 
                             <span
                                 style={{
-                                    fontSize: '11px',
                                     color: colors.textMuted,
-                                    fontWeight: 700
+                                    fontSize: '11px',
+                                    fontWeight: 800
                                 }}
                             >
                                 %
+                            </span>
+                        </div>
+                    </div>
+
+                    <div
+                        style={{
+                            minWidth: 0,
+                            minHeight: '51px',
+                            padding: '9px 12px',
+                            borderRadius: '9px',
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.inputBg,
+                            display: 'flex',
+                            alignItems: isMobile
+                                ? 'flex-start'
+                                : 'center',
+                            justifyContent: 'space-between',
+                            flexDirection: isMobile
+                                ? 'column'
+                                : 'row',
+                            gap: '7px 14px',
+                            flexWrap: 'wrap'
+                        }}
+                    >
+                        <div>
+                            <span
+                                style={{
+                                    display: 'block',
+                                    color: colors.textMuted,
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.06em',
+                                    textTransform: 'uppercase'
+                                }}
+                            >
+                                Available capacity
+                            </span>
+
+                            <span
+                                style={{
+                                    display: 'block',
+                                    marginTop: '3px',
+                                    color: colors.text,
+                                    fontSize: '11px',
+                                    fontWeight: 750
+                                }}
+                            >
+                                {workingDays} weekdays ·{' '}
+                                {formatDisplayNumber(
+                                    capacityHours,
+                                    0
+                                )}{' '}
+                                hrs
+                            </span>
+                        </div>
+
+                        <div
+                            style={{
+                                textAlign: isMobile
+                                    ? 'left'
+                                    : 'right'
+                            }}
+                        >
+                            <span
+                                style={{
+                                    display: 'block',
+                                    color: colors.textMuted,
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.06em',
+                                    textTransform: 'uppercase'
+                                }}
+                            >
+                                Allocated hours
+                            </span>
+
+                            <span
+                                style={{
+                                    display: 'block',
+                                    marginTop: '3px',
+                                    color: colors.primary,
+                                    fontSize: '12px',
+                                    fontWeight: 850
+                                }}
+                            >
+                                {formatDisplayNumber(
+                                    directHours
+                                )}{' '}
+                                hrs
                             </span>
                         </div>
                     </div>
